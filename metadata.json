@@ -1,0 +1,6 @@
+{
+  "name": "FarmGrid",
+  "description": "India-first agricultural machinery, services, and farm labour coordination platform with fair turn priority and offline capability.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

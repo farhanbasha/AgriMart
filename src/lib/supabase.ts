@@ -1,4 +1,4 @@
-﻿import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Booking, BookingStatus, OperationalStatus, Plot, Profile, Resource, WeatherCondition } from '../types';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
@@ -438,5 +438,56 @@ export async function dbUpdateBookingStatus(bookingId: string, status: BookingSt
   } catch (err) {
     console.warn('[Supabase] dbUpdateBookingStatus failed:', err);
     return false;
+  }
+}
+
+/**
+ * Purges all records from Supabase tables (bookings, plots, resources, profiles)
+ */
+export async function dbClearAllData(): Promise<boolean> {
+  const c = getSupabaseClient();
+  if (!c) return false;
+  try {
+    await c.from('bookings').delete().neq('id', 'non-existent');
+    await c.from('plots').delete().neq('id', 'non-existent');
+    await c.from('resources').delete().neq('id', 'non-existent');
+    await c.from('profiles').delete().neq('id', 'non-existent');
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] dbClearAllData error:', err);
+    return false;
+  }
+}
+
+/**
+ * Subscribes to live database changes via Supabase Realtime channel
+ */
+export function subscribeToSupabaseChanges(onUpdate: () => void): () => void {
+  const c = getSupabaseClient();
+  if (!c) return () => {};
+
+  try {
+    const channel = c
+      .channel('farmgrid-db-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+        onUpdate();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plots' }, () => {
+        onUpdate();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resources' }, () => {
+        onUpdate();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        onUpdate();
+      })
+      .subscribe();
+
+    return () => {
+      c.removeChannel(channel);
+    };
+  } catch (err) {
+    console.warn('[Supabase] Realtime subscription notice:', err);
+    return () => {};
   }
 }

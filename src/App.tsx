@@ -27,12 +27,15 @@ import {
   dbGetPlots,
   dbGetResources,
   dbGetBookings,
+  dbGetProfiles,
   dbUpsertPlot,
   dbUpsertResource,
   dbInsertBooking,
   dbUpdateBookingStatus,
   dbUpdateResourceStatus,
   dbDeleteResource,
+  dbClearAllData,
+  subscribeToSupabaseChanges,
   isSupabaseConfigured,
   checkSupabaseHealth,
 } from './lib/supabase';
@@ -128,35 +131,55 @@ export default function App() {
 
   // Synchronize state from storage (localStorage + Supabase)
   const refreshDataFromStorage = useCallback(async () => {
-    setPlots(appStorage.getPlots());
-    setResources(appStorage.getResources());
-    setBookings(appStorage.getBookings());
+    if (!isSupabaseConfigured()) {
+      setPlots(appStorage.getPlots());
+      setResources(appStorage.getResources());
+      setBookings(appStorage.getBookings());
+      return;
+    }
 
-    if (isSupabaseConfigured()) {
-      try {
-        const health = await checkSupabaseHealth();
-        if (health.tablesFound) {
-          const [cloudPlots, cloudResources, cloudBookings] = await Promise.all([
-            dbGetPlots(),
-            dbGetResources(),
-            dbGetBookings(),
-          ]);
-          if (cloudPlots.length > 0) {
-            cloudPlots.forEach((p) => appStorage.upsertPlot(p));
-            setPlots(appStorage.getPlots());
-          }
-          if (cloudResources.length > 0) {
-            cloudResources.forEach((r) => appStorage.upsertResource(r));
-            setResources(appStorage.getResources());
-          }
-          if (cloudBookings.length > 0) {
-            cloudBookings.forEach((b) => appStorage.addBooking(b));
-            setBookings(appStorage.getBookings());
-          }
+    try {
+      const health = await checkSupabaseHealth();
+      if (health.tablesFound) {
+        const [cloudProfiles, cloudPlots, cloudResources, cloudBookings] = await Promise.all([
+          dbGetProfiles(),
+          dbGetPlots(),
+          dbGetResources(),
+          dbGetBookings(),
+        ]);
+
+        // 1. Sync User Profiles
+        appStorage.saveUsers(cloudProfiles || []);
+        const currentSavedUser = appStorage.getCurrentUser();
+        if (currentSavedUser && !(cloudProfiles || []).some((u) => u.id === currentSavedUser.id)) {
+          // If the database was truncated/wiped, log out obsolete local session
+          appStorage.logoutUser();
+          setCurrentUser(null);
         }
-      } catch (err) {
-        console.warn('[App] Supabase background sync notice:', err);
+
+        // 2. Sync Plots
+        appStorage.savePlots(cloudPlots || []);
+        setPlots(cloudPlots || []);
+
+        // 3. Sync Resources
+        appStorage.saveResources(cloudResources || []);
+        setResources(cloudResources || []);
+
+        // 4. Sync Bookings (preserving unsynced offline provisional bookings)
+        const localOfflineOnly = appStorage.getBookings().filter((b) => b.isOfflineCached);
+        const synchedBookings = [...(cloudBookings || []), ...localOfflineOnly];
+        appStorage.saveBookings(synchedBookings);
+        setBookings(synchedBookings);
+      } else {
+        setPlots(appStorage.getPlots());
+        setResources(appStorage.getResources());
+        setBookings(appStorage.getBookings());
       }
+    } catch (err) {
+      console.warn('[App] Supabase background sync notice:', err);
+      setPlots(appStorage.getPlots());
+      setResources(appStorage.getResources());
+      setBookings(appStorage.getBookings());
     }
   }, []);
 
@@ -180,11 +203,27 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  // Initial cloud synchronization
+  // Cloud synchronization (Initial + Realtime + Continuous background sync)
   useEffect(() => {
-    if (isSupabaseConfigured()) {
+    if (!isSupabaseConfigured()) return;
+
+    // Initial load
+    refreshDataFromStorage();
+
+    // Realtime changes listener
+    const unsubscribeRealtime = subscribeToSupabaseChanges(() => {
       refreshDataFromStorage();
-    }
+    });
+
+    // 4-second background poll so cancellations and updates reflect on all devices
+    const intervalId = setInterval(() => {
+      refreshDataFromStorage();
+    }, 4000);
+
+    return () => {
+      unsubscribeRealtime();
+      clearInterval(intervalId);
+    };
   }, [refreshDataFromStorage]);
 
   const showToast = (msg: string) => {
@@ -602,7 +641,7 @@ export default function App() {
   };
 
   // Cancel Booking Handler (Strictly only the farmer who created the booking can cancel)
-  const handleCancelBooking = (bookingId: string) => {
+  const handleCancelBooking = async (bookingId: string) => {
     const targetBooking = bookings.find((b) => b.id === bookingId);
     if (!targetBooking) return;
 
@@ -612,8 +651,24 @@ export default function App() {
     }
 
     appStorage.updateBookingStatus(bookingId, 'cancelled');
-    setBookings(appStorage.getBookings());
+    if (isSupabaseConfigured()) {
+      await dbUpdateBookingStatus(bookingId, 'cancelled');
+    }
+    await refreshDataFromStorage();
     showToast('Booking cancelled successfully. Equipment slot is now freed for other farmers.');
+  };
+
+  // Wipe all test data clean (both Supabase Cloud and local storage)
+  const handleWipeAllData = async () => {
+    if (isSupabaseConfigured()) {
+      await dbClearAllData();
+    }
+    appStorage.clearAllData();
+    setPlots([]);
+    setResources([]);
+    setBookings([]);
+    setCurrentUser(null);
+    showToast('All data deleted successfully. System is fresh and ready for real data.');
   };
 
   // Add Resource callback
@@ -940,6 +995,7 @@ export default function App() {
         isOpen={isSupabaseModalOpen}
         onClose={() => setIsSupabaseModalOpen(false)}
         onRefreshData={refreshDataFromStorage}
+        onWipeAllData={handleWipeAllData}
       />
     </div>
   );

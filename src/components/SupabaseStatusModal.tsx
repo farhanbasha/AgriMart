@@ -10,12 +10,14 @@ import {
   X,
   Server,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 
 interface SupabaseStatusModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRefreshData?: () => void;
+  onWipeAllData?: () => Promise<void> | void;
 }
 
 const SUPABASE_SETUP_SQL = `-- FarmGrid Supabase PostgreSQL Setup
@@ -133,10 +135,29 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({
   isOpen,
   onClose,
   onRefreshData,
+  onWipeAllData,
 }) => {
   const [report, setReport] = useState<SupabaseHealthReport | null>(null);
   const [isChecking, setIsChecking] = useState<boolean>(false);
+  const [isWiping, setIsWiping] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+
+  const handleWipeAll = async () => {
+    const confirmed = confirm(
+      'Are you sure you want to delete all demo and test data (plots, equipment, bookings, profiles)?\n\nThis will completely wipe both Supabase Cloud and your local browser storage so you can enter real data cleanly.'
+    );
+    if (!confirmed) return;
+
+    setIsWiping(true);
+    try {
+      if (onWipeAllData) {
+        await onWipeAllData();
+      }
+      onClose();
+    } finally {
+      setIsWiping(false);
+    }
+  };
 
   const runHealthCheck = async () => {
     setIsChecking(true);
@@ -309,6 +330,19 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
+            {onWipeAllData && (
+              <button
+                type="button"
+                onClick={handleWipeAll}
+                disabled={isWiping}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-xs font-bold transition-colors shadow-2xs"
+                title="Wipe all demo and test data to start fresh"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>{isWiping ? 'Wiping...' : 'Wipe All Data'}</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={runHealthCheck}

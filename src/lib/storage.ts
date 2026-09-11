@@ -413,6 +413,18 @@ class LocalAppStorage {
     }
   }
 
+  public clearAllData(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.PLOTS);
+      localStorage.removeItem(STORAGE_KEYS.RESOURCES);
+      localStorage.removeItem(STORAGE_KEYS.BOOKINGS);
+      localStorage.removeItem(STORAGE_KEYS.USERS);
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    } catch (e) {
+      console.error('Failed to clear local app storage', e);
+    }
+  }
+
   // --- DYNAMIC SEARCH SUGGESTIONS ---
 
   public getSearchSuggestions(query: string): string[] {

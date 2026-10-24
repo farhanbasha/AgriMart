@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Booking, OperationalStatus, Resource, Profile } from '../types';
+import { filterNonElapsedBookings } from '../lib/engine';
 import {
   Wrench,
   CheckCircle2,
@@ -47,10 +48,11 @@ export const OwnerActionPanel: React.FC<OwnerActionPanelProps> = ({
     return resources.filter((r) => r.ownerId === currentUserId);
   }, [resources, currentUserId]);
 
-  // Bookings specifically assigned to this owner's equipment
+  // Bookings specifically assigned to this owner's equipment (excluding elapsed bookings)
   const ownerBookings = useMemo(() => {
     const ownedIds = new Set(ownedResources.map((r) => r.id));
-    return bookings.filter((b) => ownedIds.has(b.resourceId));
+    const { activeBookings } = filterNonElapsedBookings(bookings, Date.now());
+    return activeBookings.filter((b) => ownedIds.has(b.resourceId));
   }, [bookings, ownedResources]);
 
   // Compute aggregate rental revenue from active bookings on this owner's equipment
@@ -227,7 +229,7 @@ export const OwnerActionPanel: React.FC<OwnerActionPanelProps> = ({
                       <span className="text-[10px] uppercase font-bold text-neutral-400 block">Base Depot</span>
                       <div className="font-semibold text-neutral-800 flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="truncate">{res.village || 'Karnal'}</span>
+                        <span className="truncate">{res.village || 'Shivamogga'}</span>
                       </div>
                       <span className="text-[10px] font-mono text-neutral-400">
                         {res.baseLat.toFixed(2)}°N, {res.baseLng.toFixed(2)}°E

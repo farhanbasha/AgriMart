@@ -1,8 +1,27 @@
-﻿-- ==============================================================================
--- FarmGrid: Supabase (PostgreSQL) Master Schema & Setup Script
+-- ==============================================================================
+-- AgriMart: Supabase (PostgreSQL) Master Schema & Setup Script
 -- Project: https://dyrhrtfwytmrtxyephzd.supabase.co
 -- Run this script in the Supabase Dashboard -> SQL Editor -> New Query -> Run
 -- ==============================================================================
+
+-- ------------------------------------------------------------------------------
+-- QUICK NON-DESTRUCTIVE MIGRATION (If you already have existing tables & data)
+-- Run this block if you want to keep existing plots/bookings:
+-- ------------------------------------------------------------------------------
+/*
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE profiles ALTER COLUMN phone DROP NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
+CREATE INDEX IF NOT EXISTS idx_profiles_phone ON profiles(phone);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_unique_email ON profiles(email) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_unique_phone ON profiles(phone) WHERE phone IS NOT NULL;
+*/
+
+-- ------------------------------------------------------------------------------
+-- FULL CLEAN RE-INSTALL (Safe initialization)
+-- ------------------------------------------------------------------------------
 
 -- 1. CLEANUP (Safe re-run)
 DROP TABLE IF EXISTS bookings CASCADE;
@@ -11,18 +30,28 @@ DROP TABLE IF EXISTS plots CASCADE;
 DROP TABLE IF EXISTS profiles CASCADE;
 
 -- 2. PROFILES TABLE (Farmers, Equipment Owners & Prosumers)
+-- Supports EITHER phone OR email (or both). If one is provided, the other is optional.
+-- For Google OAuth registrations, only email is stored.
 CREATE TABLE profiles (
     id TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
+    email TEXT,
     phone TEXT,
     village TEXT,
     state TEXT,
-    password_pin TEXT,
+    avatar_url TEXT,
+    password_hash TEXT,
     trust_score NUMERIC(5, 2) NOT NULL DEFAULT 100.00,
     role_flags TEXT[] NOT NULL DEFAULT ARRAY['borrower', 'lender']::TEXT[],
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT check_email_or_phone CHECK (email IS NOT NULL OR phone IS NOT NULL)
 );
+
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
+CREATE INDEX IF NOT EXISTS idx_profiles_phone ON profiles(phone);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_unique_email ON profiles(email) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_unique_phone ON profiles(phone) WHERE phone IS NOT NULL;
 
 -- 3. PLOTS TABLE (Agricultural Field Plots & Geo-tracking)
 CREATE TABLE plots (

@@ -9,17 +9,21 @@ import {
   Profile,
   Resource,
   UserRole,
-  UITheme,
   UrgencyEvaluationResult,
 } from './types';
 import {
   calculateHaversineDistance,
   calculateTransitBuffer,
   computeDeterministicPriorityScore,
-  checkFeasibleTimeSlot,
-  rankCollidingBookings,
-  sequenceCollidingBookings,
+  arbitrateAndSequenceSmartSchedule,
+  filterNonElapsedBookings,
 } from './lib/engine';
+import {
+  scheduleBookingViaFastAPI,
+  pruneElapsedBookingsViaFastAPI,
+  setStoredJwtToken,
+  getStoredJwtToken,
+} from './lib/api';
 import { evaluateUrgencyHeuristic } from './lib/gemini';
 import { offlineSync } from './lib/offlineSync';
 import { appStorage } from './lib/storage';
@@ -32,10 +36,13 @@ import {
   dbUpsertResource,
   dbInsertBooking,
   dbUpdateBookingStatus,
+  dbDeleteBookings,
   dbUpdateResourceStatus,
   dbDeleteResource,
-  dbClearAllData,
   subscribeToSupabaseChanges,
+  subscribeToAuthChanges,
+  supabaseSignOut,
+  cleanAuthTokensFromUrl,
   isSupabaseConfigured,
   checkSupabaseHealth,
 } from './lib/supabase';
@@ -57,9 +64,9 @@ import { ArbitrationModal } from './components/ArbitrationModal';
 import { DisruptionSimulatorModal } from './components/DisruptionSimulatorModal';
 import { AddResourceView } from './components/AddResourceView';
 import { PlotsManager } from './components/PlotsManager';
-import { UIDesignSelector } from './components/UIDesignSelector';
 import { AuthModal } from './components/AuthModal';
 import { SupabaseStatusModal } from './components/SupabaseStatusModal';
+import { Logo } from './components/Logo';
 import {
   CheckCircle2,
   CalendarCheck,
@@ -79,18 +86,20 @@ export default function App() {
   // Kisan User Authentication & Session
   const [currentUser, setCurrentUser] = useState<Profile | null>(() => appStorage.getCurrentUser());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'complete-profile'>('login');
+  const [pendingAuthUser, setPendingAuthUser] = useState<Profile | null>(null);
 
   // Dynamic Data from appStorage (No hardcoded data)
   const [plots, setPlots] = useState<Plot[]>(() => appStorage.getPlots());
   const [resources, setResources] = useState<Resource[]>(() => appStorage.getResources());
   const [bookings, setBookings] = useState<Booking[]>(() => appStorage.getBookings());
 
-  // User-scoped plot selection
+  // User-scoped plot selection (Strict RBAC: unauthenticated guests see zero plots)
   const userPlots = useMemo(() => {
     if (currentUser) {
       return plots.filter((p) => p.farmerId === currentUser.id);
     }
-    return plots;
+    return [];
   }, [plots, currentUser]);
 
   const [selectedPlotId, setSelectedPlotId] = useState<string>(() => {
@@ -104,10 +113,6 @@ export default function App() {
 
   const [activeConflict, setActiveConflict] = useState<ConflictRecord | null>(null);
 
-  // UI Theme state
-  const [currentTheme, setCurrentTheme] = useState<UITheme>(() => appStorage.getTheme());
-  const [isUISelectorOpen, setIsUISelectorOpen] = useState(false);
-
   // Modals
   const [isArbitrationOpen, setIsArbitrationOpen] = useState(false);
   const [isDisruptionOpen, setIsDisruptionOpen] = useState(false);
@@ -120,13 +125,46 @@ export default function App() {
     offlineSync.getQueuedBookings().length
   );
 
-  // Automatic Device Location Detection on entering website
+  // Automatic Device Location Detection & Authentication Session Sync
   useEffect(() => {
     initAutoDeviceLocation().then((loc) => {
       if (loc.status === 'granted') {
-        console.log('[FarmGrid] Auto device location granted:', loc.placeName, loc.latitude, loc.longitude);
+        console.log('[AgriMart] Auto device location granted:', loc.placeName, loc.latitude, loc.longitude);
       }
     });
+
+    // Listen for OAuth session updates (e.g. Google Sign-In redirect)
+    const unsubAuth = subscribeToAuthChanges((authProfile) => {
+      if (authProfile) {
+        // If the user is actively logged in via normal registration/login, preserve their session
+        const localUser = appStorage.getCurrentUser();
+        const localJwt = getStoredJwtToken();
+        const googleAuthInitiated =
+          typeof sessionStorage !== 'undefined' &&
+          sessionStorage.getItem('agrimart_google_auth_initiated') === 'true';
+
+        if (!googleAuthInitiated && localUser && localUser.authProvider === 'local' && localJwt && localUser.id !== authProfile.id) {
+          return;
+        }
+
+        // Only prompt profile completion if this is a Google registration with missing village
+        if (authProfile.authProvider === 'google' && (!authProfile.village || authProfile.village.trim() === '')) {
+          setPendingAuthUser(authProfile);
+          setAuthModalMode('complete-profile');
+          setIsAuthModalOpen(true);
+        } else {
+          appStorage.setCurrentUser(authProfile);
+          setCurrentUser(authProfile);
+          setIsAuthModalOpen(false);
+          setPendingAuthUser(null);
+          showToast(`Namaste ${authProfile.fullName}! Welcome to AgriMart.`);
+        }
+      }
+    });
+
+    return () => {
+      unsubAuth();
+    };
   }, []);
 
   // Synchronize state from storage (localStorage + Supabase)
@@ -148,13 +186,18 @@ export default function App() {
           dbGetBookings(),
         ]);
 
-        // 1. Sync User Profiles
-        appStorage.saveUsers(cloudProfiles || []);
-        const currentSavedUser = appStorage.getCurrentUser();
-        if (currentSavedUser && !(cloudProfiles || []).some((u) => u.id === currentSavedUser.id)) {
-          // If the database was truncated/wiped, log out obsolete local session
-          appStorage.logoutUser();
-          setCurrentUser(null);
+        // 1. Sync User Profiles (Do NOT log out active session!)
+        if (cloudProfiles && cloudProfiles.length > 0) {
+          appStorage.saveUsers(cloudProfiles);
+          const currentSavedUser = appStorage.getCurrentUser();
+          if (currentSavedUser) {
+            const matchingProfile = cloudProfiles.find((u) => u.id === currentSavedUser.id);
+            if (matchingProfile) {
+              const merged = { ...currentSavedUser, ...matchingProfile };
+              appStorage.setCurrentUser(merged);
+              setCurrentUser((prev) => (prev ? { ...prev, ...matchingProfile } : merged));
+            }
+          }
         }
 
         // 2. Sync Plots
@@ -165,9 +208,43 @@ export default function App() {
         appStorage.saveResources(cloudResources || []);
         setResources(cloudResources || []);
 
-        // 4. Sync Bookings (preserving unsynced offline provisional bookings)
-        const localOfflineOnly = appStorage.getBookings().filter((b) => b.isOfflineCached);
-        const synchedBookings = [...(cloudBookings || []), ...localOfflineOnly];
+        // 4. Sync Bookings with strict unique ID mapping & elapsed-booking auto-pruning
+        const nowMs = Date.now();
+        const localBookings = appStorage.getBookings(nowMs);
+        const bookingMap = new Map<string, Booking>();
+        const expiredCloudIds: string[] = [];
+
+        // Cloud bookings take precedence as authoritative truth (only if not elapsed)
+        (cloudBookings || []).forEach((b) => {
+          if (b && b.id) {
+            const endMs = new Date(b.endTime).getTime();
+            if (Number.isNaN(endMs) || endMs <= nowMs) {
+              expiredCloudIds.push(b.id);
+              return;
+            }
+            // Once confirmed in cloud, clear the offline cached flag
+            bookingMap.set(b.id, { ...b, isOfflineCached: false });
+          }
+        });
+
+        // Clean up any elapsed cloud bookings from Supabase DB
+        if (expiredCloudIds.length > 0) {
+          dbDeleteBookings(expiredCloudIds).catch((err) => {
+            console.warn('[App] Supabase elapsed booking cleanup notice:', err);
+          });
+        }
+
+        // Only include local offline-cached bookings if they do not yet exist in cloud and haven't elapsed
+        localBookings.forEach((b) => {
+          if (b && b.id && b.isOfflineCached && !bookingMap.has(b.id)) {
+            const endMs = new Date(b.endTime).getTime();
+            if (!Number.isNaN(endMs) && endMs > nowMs) {
+              bookingMap.set(b.id, b);
+            }
+          }
+        });
+
+        const synchedBookings = Array.from(bookingMap.values());
         appStorage.saveBookings(synchedBookings);
         setBookings(synchedBookings);
       } else {
@@ -182,6 +259,29 @@ export default function App() {
       setBookings(appStorage.getBookings());
     }
   }, []);
+
+  // Live Elapsed Bookings Sweeper: Automatically remove any booking whose endTime has elapsed
+  useEffect(() => {
+    const sweepElapsed = () => {
+      const { activeBookings, prunedCount } = appStorage.pruneElapsedBookings(Date.now());
+      if (prunedCount > 0) {
+        setBookings(activeBookings);
+      } else {
+        setBookings((prev) => {
+          const { activeBookings: filtered } = filterNonElapsedBookings(prev, Date.now());
+          return filtered.length !== prev.length ? filtered : prev;
+        });
+      }
+      // Also notify FastAPI prune endpoint in background if online
+      if (appStorage.getBookings().length > 0) {
+        pruneElapsedBookingsViaFastAPI(appStorage.getBookings(), new Date()).catch(() => {});
+      }
+    };
+
+    sweepElapsed();
+    const timerId = setInterval(sweepElapsed, 15000);
+    return () => clearInterval(timerId);
+  }, [activeTab]);
 
   // Update selectedPlotId when user changes or plots update
   useEffect(() => {
@@ -235,24 +335,28 @@ export default function App() {
 
   const handleAuthSuccess = (user: Profile) => {
     setCurrentUser(user);
+    setPendingAuthUser(null);
     if (user.roleFlags.includes('lender') && !user.roleFlags.includes('borrower')) {
       setActiveRole('lender');
     } else {
       setActiveRole('borrower');
     }
-    showToast(`Namaste ${user.fullName}! Welcome to FarmGrid.`);
+    showToast(`Namaste ${user.fullName}! Welcome to AgriMart.`);
+    refreshDataFromStorage();
   };
 
-  const handleLogout = () => {
+  const openAuthModal = (mode: 'login' | 'register' = 'login') => {
+    setAuthModalMode(mode);
+    setPendingAuthUser(null);
+    setIsAuthModalOpen(true);
+  };
+
+  const handleLogout = async () => {
+    await supabaseSignOut();
+    setStoredJwtToken(null);
     appStorage.logoutUser();
     setCurrentUser(null);
     showToast('Logged out successfully.');
-  };
-
-  const handleSelectTheme = (theme: UITheme) => {
-    setCurrentTheme(theme);
-    appStorage.setTheme(theme);
-    showToast(`Design theme set to ${theme.replace('_', ' ').toUpperCase()}`);
   };
 
   const currentPlot = userPlots.find((p) => p.id === selectedPlotId) || userPlots[0] || null;
@@ -333,6 +437,7 @@ export default function App() {
           notes: q.notes,
           allocatedSlotExplanation: `Synced successfully! Scheduled with +${transit.totalBufferMinutes} min transit buffer.`,
           totalCostRupees: cost,
+          isOfflineCached: false,
         };
       });
 
@@ -358,8 +463,14 @@ export default function App() {
     urgencyEvaluation?: UrgencyEvaluationResult;
     notes: string;
   }) => {
-    if (plots.length === 0) {
-      showToast('Please register a farm plot before booking equipment.');
+    if (!currentUser) {
+      showToast('Authentication required: Please log in with your account to book machinery.');
+      openAuthModal('login');
+      return;
+    }
+
+    if (userPlots.length === 0) {
+      showToast('Please register at least one farm plot under your account before booking machinery.');
       setActiveTab('plots');
       return;
     }
@@ -369,7 +480,7 @@ export default function App() {
       return;
     }
 
-    const targetPlot = plots.find((p) => p.id === bookingData.plotId) || plots[0];
+    const targetPlot = userPlots.find((p) => p.id === bookingData.plotId) || userPlots[0];
     const targetResource = resources.find((r) => r.id === bookingData.resourceId) || resources[0];
     if (!targetPlot || !targetResource) return;
 
@@ -424,8 +535,8 @@ export default function App() {
         id: offlineItem.id,
         resourceId: targetResource.id,
         resourceName: targetResource.name,
-        farmerId: currentUser?.id || 'guest-farmer',
-        farmerName: currentUser?.fullName || 'Guest Farmer',
+        farmerId: currentUser.id,
+        farmerName: currentUser.fullName,
         plotId: targetPlot.id,
         plotName: targetPlot.plotName,
         plotLat: targetPlot.latitude,
@@ -457,126 +568,12 @@ export default function App() {
       return;
     }
 
-    // Check Feasibility and Time-Slot Collisions
-    const feasibility = checkFeasibleTimeSlot(
-      targetResource,
-      targetPlot,
-      startTime,
-      endTime,
-      bookings
-    );
-
-    const hasCollision = feasibility.hasTimeCollision && feasibility.conflictingBookings && feasibility.conflictingBookings.length > 0;
-
-    if (hasCollision) {
-      const collidingBookings = feasibility.conflictingBookings!;
-
-      const candidateBooking: Booking = {
-        id: `book-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-        resourceId: targetResource.id,
-        resourceName: targetResource.name,
-        farmerId: currentUser?.id || 'guest-farmer',
-        farmerName: currentUser?.fullName || 'Guest Farmer',
-        plotId: targetPlot.id,
-        plotName: targetPlot.plotName,
-        plotLat: targetPlot.latitude,
-        plotLng: targetPlot.longitude,
-        cropStage: bookingData.cropStage,
-        intent: bookingData.intent,
-        startTime,
-        endTime,
-        priorityScore: score.totalPriorityScore,
-        scoreBreakdown: score,
-        status: 'confirmed',
-        transitBufferMinutes: transit.totalBufferMinutes,
-        distanceKm: dist,
-        notes: bookingData.notes,
-        urgencyJustification: bookingData.urgencyJustification,
-        urgencyEvaluation: bookingData.urgencyEvaluation,
-        earliestStart: startTime,
-        latestEnd: endTime,
-        totalCostRupees: cost,
-      };
-
-      // Rank all competing bookings descending by priority score
-      const competingList = [candidateBooking, ...collidingBookings];
-      const ranked = rankCollidingBookings(competingList);
-
-      // Automatically sequence colliding bookings into consecutive non-overlapping slots
-      const sequencedList = sequenceCollidingBookings(ranked, transit.totalBufferMinutes);
-      const winner = sequencedList[0];
-      const runnerUp = sequencedList[1] || sequencedList[0];
-      const candidateWon = winner.id === candidateBooking.id;
-
-      // Persist all sequenced bookings to local storage and Supabase
-      sequencedList.forEach((seqBooking) => {
-        if (seqBooking.id === candidateBooking.id) {
-          appStorage.addBooking(seqBooking);
-        } else {
-          appStorage.updateBooking(seqBooking);
-        }
-      });
-      setBookings(appStorage.getBookings());
-
-      const primaryFactor = winner.scoreBreakdown.weatherRiskPts > runnerUp.scoreBreakdown.weatherRiskPts
-        ? 'Imminent Rainfall & Weather Threat'
-        : (winner.scoreBreakdown.urgencyJustificationPts || 0) >= 5
-        ? 'Emergency Urgency Justification & Spoilage Prevention'
-        : 'Biological Crop Vulnerability & Shatter Risk';
-
-      const conflictRecord: ConflictRecord = {
-        id: `conflict-${Date.now().toString(36)}`,
-        resourceId: targetResource.id,
-        resourceName: targetResource.name,
-        bookingA: winner,
-        bookingB: runnerUp,
-        winningBookingId: winner.id,
-        losingBookingId: runnerUp.id,
-        justificationEn: `Fair Turn Priority Decision: ${winner.farmerName} (${winner.priorityScore}/100) received 1st Priority Turn over ${runnerUp.farmerName} (${runnerUp.priorityScore}/100). ${
-          winner.urgencyJustification ? `Winner justification: "${winner.urgencyJustification}". ` : ''
-        }Subsequent requests automatically scheduled to consecutive non-overlapping slots. Deciding factors: ${primaryFactor} (+${(winner.priorityScore - runnerUp.priorityScore).toFixed(1)} pts advantage).`,
-        contingencyAction: `Sequential scheduling active: ${runnerUp.farmerName} has been automatically allocated the next available consecutive slot without time collision.`,
-        primaryDecidingFactor: primaryFactor,
-        resolvedAt: new Date().toISOString(),
-        rankedBookings: sequencedList,
-      };
-
-      setActiveConflict(conflictRecord);
-      setIsArbitrationOpen(true);
-      setActiveTab('bookings');
-
-      if (candidateWon) {
-        showToast(`Fair Turn Decision: Priority 1st Turn awarded to your request (${winner.priorityScore}/100)! Competing request sequenced to Turn #2.`);
-      } else {
-        const myTurnIndex = sequencedList.findIndex((b) => b.id === candidateBooking.id) + 1;
-        showToast(`Fair Turn Decision: ${winner.farmerName} holds higher priority (${winner.priorityScore}/100). Your request is sequenced to Turn #${myTurnIndex}.`);
-      }
-
-      // Send SMS notifications
-      if (currentUser?.phone) {
-        const myBooking = sequencedList.find((b) => b.id === candidateBooking.id) || candidateBooking;
-        sendBookingConfirmationSMS({
-          farmerPhone: currentUser.phone,
-          farmerName: currentUser.fullName,
-          resourceName: targetResource.name,
-          plotName: targetPlot.plotName,
-          startTime: myBooking.startTime,
-          totalCostRupees: cost,
-          priorityScore: myBooking.priorityScore,
-          transitBufferMinutes: transit.totalBufferMinutes,
-        });
-      }
-
-      return;
-    }
-
-    // No collision: Direct Confirmation
-    const newBooking: Booking = {
+    const candidateBooking: Booking = {
       id: `book-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       resourceId: targetResource.id,
       resourceName: targetResource.name,
-      farmerId: currentUser?.id || 'guest-farmer',
-      farmerName: currentUser?.fullName || 'Guest Farmer',
+      farmerId: currentUser.id,
+      farmerName: currentUser.fullName,
       plotId: targetPlot.id,
       plotName: targetPlot.plotName,
       plotLat: targetPlot.latitude,
@@ -601,12 +598,90 @@ export default function App() {
       totalCostRupees: cost,
     };
 
-    appStorage.addBooking(newBooking);
-    if (isSupabaseConfigured()) {
-      dbInsertBooking(newBooking);
-    }
+    const nowDate = new Date();
+    const activeCurrentBookings = appStorage.getBookings(nowDate.getTime());
+
+    // Run Smart Schedule Arbitration (prunes elapsed, locks ongoing & 30m buffer, arbitrates strictly against remaining)
+    const smartResult = arbitrateAndSequenceSmartSchedule(
+      candidateBooking,
+      activeCurrentBookings,
+      transit.totalBufferMinutes,
+      nowDate.getTime()
+    );
+
+    // Also invoke FastAPI backend endpoint asynchronously to keep backend state & logs synchronized
+    scheduleBookingViaFastAPI(
+      candidateBooking,
+      activeCurrentBookings,
+      nowDate,
+      transit.totalBufferMinutes
+    ).catch(() => {});
+
+    // Persist all sequenced bookings (candidate + any re-sequenced remaining bookings)
+    smartResult.sequencedBookings.forEach((b) => {
+      if (b.id === candidateBooking.id) {
+        appStorage.addBooking(b);
+      } else {
+        appStorage.updateBooking(b);
+      }
+    });
     setBookings(appStorage.getBookings());
-    showToast(`Booked ${targetResource.name}! Priority Score: ${score.totalPriorityScore}/100.`);
+
+    const allocatedBooking =
+      smartResult.sequencedBookings.find((b) => b.id === candidateBooking.id) ||
+      smartResult.sequencedBookings[0] ||
+      candidateBooking;
+
+    if (smartResult.hasConflict && smartResult.conflictRecord) {
+      const winner = smartResult.sequencedBookings[0] || allocatedBooking;
+      const candidateWon = winner.id === candidateBooking.id;
+
+      setActiveConflict(smartResult.conflictRecord);
+      setIsArbitrationOpen(true);
+      setActiveTab('bookings');
+
+      if (candidateWon) {
+        showToast(
+          smartResult.wasShiftedByLockedOngoing
+            ? `Ongoing shift protected! Your request (${winner.priorityScore}/100) won 1st Remaining Turn right after the active shift.`
+            : `Fair Turn Decision: Priority 1st Turn awarded to your request (${winner.priorityScore}/100)! Competing request sequenced to Turn #2.`
+        );
+      } else {
+        const myTurnIndex =
+          smartResult.sequencedBookings.findIndex((b) => b.id === candidateBooking.id) + 1;
+        showToast(
+          `Fair Turn Decision: ${winner.farmerName} holds higher priority (${winner.priorityScore}/100) among remaining schedules. Your request is Turn #${myTurnIndex}.`
+        );
+      }
+
+      if (currentUser?.phone) {
+        sendBookingConfirmationSMS({
+          farmerPhone: currentUser.phone,
+          farmerName: currentUser.fullName,
+          resourceName: targetResource.name,
+          plotName: targetPlot.plotName,
+          startTime: allocatedBooking.startTime,
+          totalCostRupees: cost,
+          priorityScore: allocatedBooking.priorityScore,
+          transitBufferMinutes: transit.totalBufferMinutes,
+        });
+      }
+
+      return;
+    }
+
+    // No remaining-schedule collision (either direct confirmation, or shifted cleanly after a locked ongoing/30m-buffer schedule)
+    if (smartResult.wasShiftedByLockedOngoing) {
+      const formattedStart = new Date(allocatedBooking.startTime).toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      showToast(
+        `Ongoing/30m-buffer shift is locked & undisturbed. Your booking (${score.totalPriorityScore}/100) is scheduled next at ${formattedStart}!`
+      );
+    } else {
+      showToast(`Booked ${targetResource.name}! Priority Score: ${score.totalPriorityScore}/100.`);
+    }
     setActiveTab('bookings');
 
     // Automated Twilio SMS Dispatch to Farmer & Driver
@@ -616,7 +691,7 @@ export default function App() {
         farmerName: currentUser.fullName,
         resourceName: targetResource.name,
         plotName: targetPlot.plotName,
-        startTime,
+        startTime: allocatedBooking.startTime,
         totalCostRupees: cost,
         priorityScore: score.totalPriorityScore,
         transitBufferMinutes: transit.totalBufferMinutes,
@@ -633,7 +708,7 @@ export default function App() {
           resourceName: targetResource.name,
           plotName: targetPlot.plotName,
           farmerName: currentUser.fullName,
-          startTime,
+          startTime: allocatedBooking.startTime,
           distanceKm: dist,
         });
       }
@@ -656,19 +731,6 @@ export default function App() {
     }
     await refreshDataFromStorage();
     showToast('Booking cancelled successfully. Equipment slot is now freed for other farmers.');
-  };
-
-  // Wipe all test data clean (both Supabase Cloud and local storage)
-  const handleWipeAllData = async () => {
-    if (isSupabaseConfigured()) {
-      await dbClearAllData();
-    }
-    appStorage.clearAllData();
-    setPlots([]);
-    setResources([]);
-    setBookings([]);
-    setCurrentUser(null);
-    showToast('All data deleted successfully. System is fresh and ready for real data.');
   };
 
   // Add Resource callback
@@ -745,15 +807,13 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen theme-${currentTheme} transition-colors duration-200 flex flex-col`}>
+    <div className="min-h-screen bg-[#f4f8f5] flex flex-col">
       {/* 1. Header with Menu Navigation & Cloud DB trigger */}
       <Header
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         activeRole={activeRole}
         onRoleChange={setActiveRole}
-        onOpenUISelector={() => setIsUISelectorOpen(true)}
-        currentTheme={currentTheme}
         conflictCount={activeConflict ? 1 : 0}
         onOpenFairTurnModal={() => setIsArbitrationOpen(true)}
         isOnline={isOnline}
@@ -761,7 +821,7 @@ export default function App() {
         offlineQueueCount={offlineQueueCount}
         onManualSync={triggerSyncOfflineQueue}
         currentUser={currentUser}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onOpenAuthModal={() => openAuthModal('login')}
         onLogout={handleLogout}
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
       />
@@ -816,6 +876,7 @@ export default function App() {
               onOpenAddPlot={() => setActiveTab('plots')}
               onOpenAddResource={() => setActiveTab('add')}
               currentUser={currentUser}
+              onOpenAuthModal={() => openAuthModal('login')}
               onSubmitBooking={handleBookingSubmit}
             />
 
@@ -825,6 +886,11 @@ export default function App() {
               activePlot={currentPlot}
               currentUser={currentUser}
               onRequestResource={(resId) => {
+                if (!currentUser) {
+                  showToast('Please log in with your mobile number or email to select and book equipment.');
+                  openAuthModal('login');
+                  return;
+                }
                 setSelectedResourceId(resId);
                 const target = resources.find((r) => r.id === resId);
                 if (target) {
@@ -833,7 +899,14 @@ export default function App() {
                 }
               }}
               onDeleteResource={handleDeleteResource}
-              onNavigateToAdd={() => setActiveTab('add')}
+              onNavigateToAdd={() => {
+                if (!currentUser) {
+                  showToast('Please log in with your account before listing machinery.');
+                  openAuthModal('login');
+                  return;
+                }
+                setActiveTab('add');
+              }}
             />
           </div>
         )}
@@ -844,7 +917,7 @@ export default function App() {
             onPlotAdded={handlePlotAdded}
             onViewExplore={() => setActiveTab('explore')}
             currentUser={currentUser}
-            onOpenAuthModal={() => setIsAuthModalOpen(true)}
+            onOpenAuthModal={() => openAuthModal('login')}
           />
         )}
 
@@ -866,7 +939,7 @@ export default function App() {
             plots={plots}
             onPlotsChange={setPlots}
             currentUser={currentUser}
-            onOpenAuthModal={() => setIsAuthModalOpen(true)}
+            onOpenAuthModal={() => openAuthModal('login')}
             onBookForPlot={(plotId) => {
               setSelectedPlotId(plotId);
               setActiveTab('explore');
@@ -885,7 +958,7 @@ export default function App() {
               currentUser={currentUser}
               onUpdateStatus={handleUpdateResourceStatus}
               onNavigateToAdd={() => setActiveTab('add')}
-              onOpenAuthModal={() => setIsAuthModalOpen(true)}
+              onOpenAuthModal={() => openAuthModal('login')}
               onCancelBooking={handleCancelBooking}
             />
           </div>
@@ -897,14 +970,12 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-6 h-6 rounded-lg bg-emerald-700 text-white font-black flex items-center justify-center text-xs">
-                FG
-              </div>
-              <span className="font-bold text-neutral-900">FarmGrid Kisan Seva</span>
+              <Logo size="sm" />
+              <span className="font-bold text-neutral-900">AgriMart Kisan Seva</span>
               <span className="text-neutral-300">|</span>
               <span>Made for Indian Farmers</span>
               <span className="text-neutral-300">|</span>
-              <span>Karnal, Haryana & Pan-India</span>
+              <span></span>
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-3">
@@ -933,13 +1004,6 @@ export default function App() {
                 <span>Fair Turn Rules</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setIsUISelectorOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold border border-neutral-300 transition-colors"
-              >
-                <span>Theme</span>
-              </button>
             </div>
           </div>
 
@@ -954,14 +1018,6 @@ export default function App() {
           </div>
         </div>
       </footer>
-
-      {/* UI Design Theme Selector Modal */}
-      <UIDesignSelector
-        currentTheme={currentTheme}
-        onSelectTheme={handleSelectTheme}
-        isOpen={isUISelectorOpen}
-        onClose={() => setIsUISelectorOpen(false)}
-      />
 
       {/* Fair Turn Priority Modal */}
       <ArbitrationModal
@@ -983,11 +1039,16 @@ export default function App() {
         onApplyDisruption={handleApplyDisruption}
       />
 
-      {/* Kisan Auth Modal (Login / Sign Up) */}
+      {/* Kisan Auth Modal (Login / Sign Up / Complete Profile) */}
       <AuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          setPendingAuthUser(null);
+        }}
         onAuthSuccess={handleAuthSuccess}
+        initialMode={authModalMode}
+        initialUser={pendingAuthUser}
       />
 
       {/* Supabase Cloud Database Status & Migration Modal */}
@@ -995,7 +1056,6 @@ export default function App() {
         isOpen={isSupabaseModalOpen}
         onClose={() => setIsSupabaseModalOpen(false)}
         onRefreshData={refreshDataFromStorage}
-        onWipeAllData={handleWipeAllData}
       />
     </div>
   );

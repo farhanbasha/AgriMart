@@ -79,7 +79,7 @@ export const SentinelBar: React.FC<SentinelBarProps> = ({
               )}
             </span>
             <span className="font-semibold text-neutral-900">
-              Karnal Field Radar:
+              Field Radar:
             </span>{' '}
             <span className="text-neutral-700">
               {weather?.description || 'Prioritizing ripe Basmati paddy harvesters based on weather models.'}

@@ -9,17 +9,40 @@ import {
   dbDeleteResource,
   dbInsertBooking,
   dbUpdateBookingStatus,
+  dbDeleteBooking,
+  dbDeleteBookings,
 } from './supabase';
 
 // Browser storage keys (v3 clean slate, zero hardcoded mock data)
 const STORAGE_KEYS = {
-  RESOURCES: 'farmgrid_resources_v3',
-  PLOTS: 'farmgrid_plots_v3',
-  BOOKINGS: 'farmgrid_bookings_v3',
-  THEME: 'farmgrid_ui_theme_v3',
-  USERS: 'farmgrid_users_registry_v3',
-  CURRENT_USER: 'farmgrid_current_user_v3',
+  RESOURCES: 'agrimart_resources_v3',
+  PLOTS: 'agrimart_plots_v3',
+  BOOKINGS: 'agrimart_bookings_v3',
+  USERS: 'agrimart_users_registry_v3',
+  CURRENT_USER: 'agrimart_current_user_v3',
 };
+
+// Seamlessly migrate legacy farmgrid local storage keys to agrimart
+if (typeof window !== 'undefined') {
+  const legacyMap: Record<string, string> = {
+    farmgrid_resources_v3: STORAGE_KEYS.RESOURCES,
+    farmgrid_plots_v3: STORAGE_KEYS.PLOTS,
+    farmgrid_bookings_v3: STORAGE_KEYS.BOOKINGS,
+    farmgrid_users_registry_v3: STORAGE_KEYS.USERS,
+    farmgrid_current_user_v3: STORAGE_KEYS.CURRENT_USER,
+  };
+  for (const [oldKey, newKey] of Object.entries(legacyMap)) {
+    try {
+      const oldVal = localStorage.getItem(oldKey);
+      if (oldVal && !localStorage.getItem(newKey)) {
+        localStorage.setItem(newKey, oldVal);
+        localStorage.removeItem(oldKey);
+      }
+    } catch {
+      // Ignore in restricted environments
+    }
+  }
+}
 
 export const DEFAULT_INDIAN_PLOTS: Plot[] = [];
 export const DEFAULT_INDIAN_RESOURCES: Resource[] = [];
@@ -74,14 +97,24 @@ class LocalAppStorage {
 
   public registerUser(params: {
     fullName: string;
-    phone: string;
+    phone?: string;
+    email?: string;
     village?: string;
     state?: string;
     roleFlags: UserRole[];
+    roles?: string[];
+    permissions?: string[];
+    avatarUrl?: string;
+    password?: string;
     passwordPin?: string;
   }): { success: boolean; user?: Profile; error?: string } {
-    const cleanPhone = params.phone.replace(/[\s\-()]/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) {
+    const cleanPhone = params.phone ? params.phone.replace(/[\s\-()]/g, '') : undefined;
+    const cleanEmail = params.email ? params.email.trim().toLowerCase() : undefined;
+
+    if (!cleanPhone && !cleanEmail) {
+      return { success: false, error: 'Please enter either a mobile number or email address' };
+    }
+    if (cleanPhone && cleanPhone.length < 10) {
       return { success: false, error: 'Please enter a valid 10-digit mobile number' };
     }
     if (!params.fullName.trim()) {
@@ -89,20 +122,38 @@ class LocalAppStorage {
     }
 
     const users = this.getUsers();
-    const existing = users.find((u) => u.phone.replace(/[\s\-()]/g, '') === cleanPhone);
-    if (existing) {
-      return { success: false, error: 'An account with this mobile number already exists. Please log in.' };
+    if (cleanPhone) {
+      const existingPhone = users.find(
+        (u) => u.phone && u.phone.replace(/[\s\-()]/g, '') === cleanPhone
+      );
+      if (existingPhone) {
+        return { success: false, error: 'An account with this mobile number already exists. Please log in.' };
+      }
+    }
+    if (cleanEmail) {
+      const existingEmail = users.find(
+        (u) => u.email && u.email.trim().toLowerCase() === cleanEmail
+      );
+      if (existingEmail) {
+        return { success: false, error: 'An account with this email address already exists. Please log in.' };
+      }
     }
 
     const newUser: Profile = {
       id: `usr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       fullName: params.fullName.trim(),
-      phone: params.phone.trim(),
+      phone: params.phone?.trim() || undefined,
+      email: cleanEmail || undefined,
       village: params.village?.trim() || undefined,
       state: params.state?.trim() || undefined,
       trustScore: 100,
       roleFlags: params.roleFlags.length > 0 ? params.roleFlags : ['borrower', 'lender'],
-      passwordPin: params.passwordPin?.trim() || undefined,
+      roles: params.roles,
+      permissions: params.permissions,
+      avatarUrl: params.avatarUrl,
+      password: params.password?.trim() || undefined,
+      passwordPin: params.passwordPin?.trim() || params.password?.trim() || undefined,
+      authProvider: 'local',
     };
 
     users.push(newUser);
@@ -120,31 +171,42 @@ class LocalAppStorage {
   }
 
   public loginUser(
-    phone: string,
-    passwordPin?: string
+    phoneOrEmail: string,
+    password?: string
   ): { success: boolean; user?: Profile; error?: string } {
-    const cleanPhone = phone.replace(/[\s\-()]/g, '');
-    if (!cleanPhone) {
-      return { success: false, error: 'Please enter your mobile number' };
+    const rawQuery = (phoneOrEmail || '').trim();
+    if (!rawQuery) {
+      return { success: false, error: 'Please enter your mobile number or email address' };
     }
 
     const users = this.getUsers();
-    const user = users.find((u) => {
-      const uPhone = u.phone.replace(/[\s\-()]/g, '');
-      return uPhone === cleanPhone || uPhone.endsWith(cleanPhone) || cleanPhone.endsWith(uPhone);
-    });
+    let user: Profile | undefined;
+
+    if (rawQuery.includes('@')) {
+      const cleanEmail = rawQuery.toLowerCase();
+      user = users.find((u) => u.email && u.email.trim().toLowerCase() === cleanEmail);
+    } else {
+      const cleanPhone = rawQuery.replace(/[\s\-()]/g, '');
+      user = users.find((u) => {
+        if (!u.phone) return false;
+        const uPhone = u.phone.replace(/[\s\-()]/g, '');
+        return uPhone === cleanPhone || uPhone.endsWith(cleanPhone) || cleanPhone.endsWith(uPhone);
+      });
+    }
 
     if (!user) {
       return {
         success: false,
-        error: 'No registered farmer or owner account found with this number. Please register first.',
+        error: 'No registered account found with this credential. Please register first.',
       };
     }
 
-    if (user.passwordPin && passwordPin && user.passwordPin !== passwordPin.trim()) {
-      return { success: false, error: 'Incorrect 4-digit PIN. Please try again.' };
+    const userSecret = user.password || user.passwordPin;
+    if (userSecret && password && userSecret !== password.trim()) {
+      return { success: false, error: 'Incorrect password. Please try again.' };
     }
 
+    user.authProvider = user.authProvider || 'local';
     this.setCurrentUser(user);
     return { success: true, user };
   }
@@ -179,9 +241,9 @@ class LocalAppStorage {
       id: `res-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       conditionRating: item.conditionRating || 4.8,
       operationalStatus: item.operationalStatus || 'available',
-      baseLat: item.baseLat || 29.68,
-      baseLng: item.baseLng || 76.99,
-      maxRadiusKm: item.maxRadiusKm || 50.0,
+      baseLat: typeof item.baseLat === 'number' && !isNaN(item.baseLat) ? item.baseLat : 29.6857,
+      baseLng: typeof item.baseLng === 'number' && !isNaN(item.baseLng) ? item.baseLng : 76.9905,
+      maxRadiusKm: typeof item.maxRadiusKm === 'number' && !isNaN(item.maxRadiusKm) ? item.maxRadiusKm : 30.0,
       operatingHours: item.operatingHours || '06:00 AM - 08:00 PM',
     };
     resources.unshift(newResource);
@@ -274,8 +336,8 @@ class LocalAppStorage {
     const newPlot: Plot = {
       ...item,
       id: `plot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      latitude: item.latitude || 29.68,
-      longitude: item.longitude || 76.99,
+      latitude: typeof item.latitude === 'number' && !isNaN(item.latitude) ? item.latitude : 29.6857,
+      longitude: typeof item.longitude === 'number' && !isNaN(item.longitude) ? item.longitude : 76.9905,
       weather: item.weather || {
         rainfallMm: 0.0,
         rainProbabilityPercent: 10,
@@ -343,20 +405,91 @@ class LocalAppStorage {
     this.savePlots(plots);
   }
 
-  // --- BOOKINGS (Zero Hardcoded Data) ---
+  // --- BOOKINGS (Zero Hardcoded Data with Strict Unique ID Deduplication & Elapsed Time Auto-Pruning) ---
 
-  public getBookings(): Booking[] {
+  public getBookings(referenceNowMs: number = Date.now()): Booking[] {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.BOOKINGS);
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      const parsed: Booking[] = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+
+      // Strictly deduplicate by ID and auto-prune elapsed bookings (endTime <= now)
+      const dedupMap = new Map<string, Booking>();
+      const expiredIds: string[] = [];
+
+      for (const b of parsed) {
+        if (!b || !b.id) continue;
+        const endMs = new Date(b.endTime).getTime();
+        if (Number.isNaN(endMs) || endMs <= referenceNowMs) {
+          expiredIds.push(b.id);
+          continue;
+        }
+        dedupMap.set(b.id, b);
+      }
+      const activeBookings = Array.from(dedupMap.values());
+
+      // If duplicates or elapsed bookings were found, sanitize localStorage & cloud DB immediately
+      if (activeBookings.length < parsed.length || expiredIds.length > 0) {
+        this.saveBookings(activeBookings);
+        if (expiredIds.length > 0 && isSupabaseConfigured()) {
+          dbDeleteBookings(expiredIds).catch((err) => {
+            console.warn('[Storage] Supabase elapsed booking cleanup notice:', err);
+          });
+        }
+      }
+
+      return activeBookings;
     } catch {
       return [];
     }
   }
 
+  public pruneElapsedBookings(referenceNowMs: number = Date.now()): {
+    activeBookings: Booking[];
+    prunedCount: number;
+  } {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.BOOKINGS);
+      const parsed: Booking[] = raw ? JSON.parse(raw) : [];
+      const activeBookings = this.getBookings(referenceNowMs);
+      const prunedCount = Math.max(0, (Array.isArray(parsed) ? parsed.length : 0) - activeBookings.length);
+      return { activeBookings, prunedCount };
+    } catch {
+      return { activeBookings: [], prunedCount: 0 };
+    }
+  }
+
+  public deleteBooking(bookingId: string): boolean {
+    const bookings = this.getBookings();
+    const filtered = bookings.filter((b) => b.id !== bookingId);
+    if (filtered.length !== bookings.length) {
+      this.saveBookings(filtered);
+      if (isSupabaseConfigured()) {
+        dbDeleteBooking(bookingId).catch((err) => {
+          console.warn('[Storage] Supabase delete booking notice:', err);
+        });
+      }
+      return true;
+    }
+    return false;
+  }
+
   public saveBookings(bookings: Booking[]): void {
     try {
-      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(bookings));
+      const nowMs = Date.now();
+      // Always enforce unique booking IDs and non-elapsed endTime before saving to localStorage
+      const dedupMap = new Map<string, Booking>();
+      for (const b of bookings) {
+        if (b && b.id) {
+          const endMs = new Date(b.endTime).getTime();
+          if (!Number.isNaN(endMs) && endMs > nowMs) {
+            dedupMap.set(b.id, b);
+          }
+        }
+      }
+      const uniqueBookings = Array.from(dedupMap.values());
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(uniqueBookings));
     } catch (e) {
       console.error('Failed to save bookings', e);
     }
@@ -380,10 +513,17 @@ class LocalAppStorage {
 
   public updateBookingStatus(bookingId: string, status: Booking['status']): void {
     const bookings = this.getBookings();
-    const idx = bookings.findIndex((b) => b.id === bookingId);
-    if (idx !== -1) {
-      bookings[idx].status = status;
-      this.saveBookings(bookings);
+    let hasUpdated = false;
+    const updated = bookings.map((b) => {
+      if (b.id === bookingId) {
+        hasUpdated = true;
+        return { ...b, status };
+      }
+      return b;
+    });
+
+    if (hasUpdated) {
+      this.saveBookings(updated);
     }
 
     // Asynchronously synchronize with Supabase Cloud DB
@@ -410,18 +550,6 @@ class LocalAppStorage {
       dbInsertBooking(updatedBooking).catch((err) => {
         console.warn('[Storage] Supabase update booking notice:', err);
       });
-    }
-  }
-
-  public clearAllData(): void {
-    try {
-      localStorage.removeItem(STORAGE_KEYS.PLOTS);
-      localStorage.removeItem(STORAGE_KEYS.RESOURCES);
-      localStorage.removeItem(STORAGE_KEYS.BOOKINGS);
-      localStorage.removeItem(STORAGE_KEYS.USERS);
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-    } catch (e) {
-      console.error('Failed to clear local app storage', e);
     }
   }
 
@@ -456,33 +584,6 @@ class LocalAppStorage {
     }
 
     return Array.from(suggestionsSet).slice(0, 8);
-  }
-
-  // --- UI THEME ---
-
-  public getTheme(): string {
-    try {
-      return localStorage.getItem(STORAGE_KEYS.THEME) || 'kisan_green';
-    } catch {
-      return 'kisan_green';
-    }
-  }
-
-  public setTheme(theme: string): void {
-    try {
-      localStorage.setItem(STORAGE_KEYS.THEME, theme);
-    } catch (e) {
-      console.error('Failed to save theme', e);
-    }
-  }
-
-  // --- RESET SYSTEM TO CLEAN STATE ---
-
-  public resetAll(): void {
-    localStorage.removeItem(STORAGE_KEYS.RESOURCES);
-    localStorage.removeItem(STORAGE_KEYS.PLOTS);
-    localStorage.removeItem(STORAGE_KEYS.BOOKINGS);
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 }
 

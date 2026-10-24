@@ -1,1 +1,3 @@
-# FarmGrid Backend Package
+"""
+AgriMart Backend Package.
+"""

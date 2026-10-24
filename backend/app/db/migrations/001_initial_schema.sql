@@ -1,30 +1,32 @@
-﻿-- ==============================================================================
--- FarmGrid: Supabase (PostgreSQL) Master Schema & Setup Script
--- Project: https://dyrhrtfwytmrtxyephzd.supabase.co
--- Run this script in the Supabase Dashboard -> SQL Editor -> New Query -> Run
+-- ==============================================================================
+-- AgriMart: Supabase (PostgreSQL) Master Schema & Setup Script
+-- Migration: 001_initial_schema.sql
 -- ==============================================================================
 
--- 1. CLEANUP (Safe re-run)
 DROP TABLE IF EXISTS bookings CASCADE;
 DROP TABLE IF EXISTS resources CASCADE;
 DROP TABLE IF EXISTS plots CASCADE;
 DROP TABLE IF EXISTS profiles CASCADE;
 
--- 2. PROFILES TABLE (Farmers, Equipment Owners & Prosumers)
 CREATE TABLE profiles (
     id TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
+    email TEXT,
     phone TEXT,
     village TEXT,
     state TEXT,
-    password_pin TEXT,
+    avatar_url TEXT,
+    password_hash TEXT,
     trust_score NUMERIC(5, 2) NOT NULL DEFAULT 100.00,
     role_flags TEXT[] NOT NULL DEFAULT ARRAY['borrower', 'lender']::TEXT[],
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT check_email_or_phone CHECK (email IS NOT NULL OR phone IS NOT NULL)
 );
 
--- 3. PLOTS TABLE (Agricultural Field Plots & Geo-tracking)
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
+CREATE INDEX IF NOT EXISTS idx_profiles_phone ON profiles(phone);
+
 CREATE TABLE plots (
     id TEXT PRIMARY KEY,
     farmer_id TEXT NOT NULL,
@@ -43,7 +45,6 @@ CREATE TABLE plots (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. RESOURCES TABLE (Machinery, Implements, Labour & Services)
 CREATE TABLE resources (
     id TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL,
@@ -69,7 +70,6 @@ CREATE TABLE resources (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 5. BOOKINGS TABLE (Time-Slot Allocations, Priority Scores & Telemetry)
 CREATE TABLE bookings (
     id TEXT PRIMARY KEY,
     resource_id TEXT NOT NULL,
@@ -100,7 +100,6 @@ CREATE TABLE bookings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. INDEXES FOR RAPID REAL-TIME SEARCH
 CREATE INDEX IF NOT EXISTS idx_plots_farmer ON plots(farmer_id);
 CREATE INDEX IF NOT EXISTS idx_resources_owner ON resources(owner_id);
 CREATE INDEX IF NOT EXISTS idx_resources_status ON resources(operational_status);
@@ -108,13 +107,11 @@ CREATE INDEX IF NOT EXISTS idx_bookings_resource ON bookings(resource_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_time ON bookings(resource_id, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_bookings_priority ON bookings(priority_score DESC);
 
--- 7. ENABLE ROW-LEVEL SECURITY (RLS)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE resources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 
--- 8. PERMISSIVE POLICIES FOR COOPERATIVE ACCESS (ANON & AUTHENTICATED)
 CREATE POLICY "Public read profiles" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Public insert profiles" ON profiles FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public update profiles" ON profiles FOR UPDATE USING (true);
@@ -135,7 +132,6 @@ CREATE POLICY "Public insert bookings" ON bookings FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public update bookings" ON bookings FOR UPDATE USING (true);
 CREATE POLICY "Public delete bookings" ON bookings FOR DELETE USING (true);
 
--- 9. GRANT TABLE PERMISSIONS
 GRANT ALL ON TABLE profiles TO anon, authenticated, service_role;
 GRANT ALL ON TABLE plots TO anon, authenticated, service_role;
 GRANT ALL ON TABLE resources TO anon, authenticated, service_role;

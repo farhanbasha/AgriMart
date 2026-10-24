@@ -5,6 +5,7 @@ import {
   calculateTransitBuffer,
   computeDeterministicPriorityScore,
   checkFeasibleTimeSlot,
+  isBookingLockedOngoing,
   FeasibilityCheckResult,
 } from '../lib/engine';
 import { getLiveWeatherForCoordinates } from '../lib/weather';
@@ -34,6 +35,7 @@ import {
   Sparkles,
   Loader2,
   Flame,
+  Lock,
 } from 'lucide-react';
 
 interface FarmerActionPanelProps {
@@ -48,6 +50,7 @@ interface FarmerActionPanelProps {
   onOpenAddPlot?: () => void;
   onOpenAddResource?: () => void;
   currentUser?: Profile | null;
+  onOpenAuthModal?: () => void;
   onSubmitBooking: (bookingData: {
     plotId: string;
     resourceId: string;
@@ -75,15 +78,17 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
   onOpenAddPlot,
   onOpenAddResource,
   currentUser,
+  onOpenAuthModal,
   onSubmitBooking,
 }) => {
-  // STRICT OWNERSHIP FILTER:
+  // STRICT OWNERSHIP FILTER (RBAC):
   // Farmer can only book machinery for their own registered land plots.
+  // Unauthenticated guests see zero plots.
   const userPlots = useMemo(() => {
     if (currentUser) {
       return plots.filter((p) => p.farmerId === currentUser.id);
     }
-    return plots;
+    return [];
   }, [plots, currentUser]);
 
   const [internalResourceId, setInternalResourceId] = useState(resources[0]?.id || '');
@@ -106,16 +111,25 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
   const [customCropStage, setCustomCropStage] = useState<CropStage | null>(null);
   const [notes, setNotes] = useState('');
   const [deviceLoc, setDeviceLoc] = useState<DeviceLocationState>(() => getDeviceLocation());
+  const [nowTick, setNowTick] = useState<Date>(() => new Date());
 
   // Real-time Urgency Evaluation State (NLP Heuristic + Gemini AI)
   const [urgencyEvaluation, setUrgencyEvaluation] = useState<UrgencyEvaluationResult>(() =>
     evaluateUrgencyHeuristic('', 'Ripening', 0)
   );
   const [isEvaluatingUrgency, setIsEvaluatingUrgency] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeDeviceLocation((loc) => setDeviceLoc(loc));
     return unsub;
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTick(new Date());
+    }, 15000);
+    return () => clearInterval(timer);
   }, []);
 
   // Selected Plot & Resource objects (strictly from user's plots)
@@ -123,19 +137,43 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
     return userPlots.find((p) => p.id === selectedPlotId) || userPlots[0] || null;
   }, [userPlots, selectedPlotId]);
 
+  const farmerLat = activePlot?.latitude ?? deviceLoc.latitude ?? 29.6857;
+  const farmerLng = activePlot?.longitude ?? deviceLoc.longitude ?? 76.9905;
+
+  // Strict Lender Serviceable Radius Filter (Haversine):
+  // Other farmers cannot see or book machinery outside the lender's configured serviceable distance
+  const serviceableResources = useMemo(() => {
+    return resources.filter((res) => {
+      const isMine = Boolean(currentUser && res.ownerId === currentUser.id);
+      if (isMine) return true;
+      const distance = calculateHaversineDistance(farmerLat, farmerLng, res.baseLat, res.baseLng);
+      const maxRadius = res.maxRadiusKm || 50.0;
+      return distance <= maxRadius;
+    });
+  }, [resources, farmerLat, farmerLng, currentUser]);
+
   const activeResource = useMemo(
-    () => resources.find((r) => r.id === activeResourceId) || resources[0] || null,
-    [resources, activeResourceId]
+    () => serviceableResources.find((r) => r.id === activeResourceId) || serviceableResources[0] || null,
+    [serviceableResources, activeResourceId]
   );
+
+  // Automatically keep active selection on an in-service machine
+  useEffect(() => {
+    if (serviceableResources.length > 0) {
+      const exists = serviceableResources.some((r) => r.id === activeResourceId);
+      if (!exists) {
+        handleResourceChange(serviceableResources[0].id);
+      }
+    }
+  }, [serviceableResources, activeResourceId]);
 
   const effectiveCropStage: CropStage = customCropStage || activePlot?.cropStage || 'Ripening';
 
-  // Compute calculated start and end times
+  // Compute calculated start and end times refreshed with nowTick
   const startTimeIso = useMemo(() => {
-    const d = new Date();
-    d.setTime(d.getTime() + hoursUntilStart * 3600 * 1000);
+    const d = new Date(nowTick.getTime() + hoursUntilStart * 3600 * 1000);
     return d.toISOString();
-  }, [hoursUntilStart]);
+  }, [hoursUntilStart, nowTick]);
 
   const endTimeIso = useMemo(() => {
     const d = new Date(startTimeIso);
@@ -263,8 +301,30 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
     return activeResource.hourlyRate * durationHours;
   }, [activeResource, durationHours, activePlot]);
 
+  // Check if any colliding booking on the selected machine is currently ongoing or within its 30m pre-start buffer lock
+  const hasLockedOngoingCollision = useMemo(() => {
+    if (!feasibility.hasTimeCollision) return false;
+    if (feasibility.hasLockedOngoingCollision) return true;
+    const allColliding = [
+      ...(feasibility.lockedOngoingBookings || []),
+      ...(feasibility.conflictingBookings || []),
+    ];
+    return allColliding.some((b) => isBookingLockedOngoing(b, nowTick.getTime(), 30));
+  }, [feasibility, nowTick]);
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
+    if (!currentUser) {
+      if (onOpenAuthModal) {
+        onOpenAuthModal();
+      } else {
+        alert('Authentication required: Please log in with your mobile number to book equipment.');
+      }
+      return;
+    }
+
     if (!activePlot) {
       alert('Please register at least one farm plot under your account before requesting equipment.');
       return;
@@ -279,18 +339,36 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
       return;
     }
 
-    onSubmitBooking({
-      plotId: activePlot.id,
-      resourceId: activeResource.id,
-      intent,
-      cropStage: effectiveCropStage,
-      durationHours,
-      hoursUntilStart,
-      earliestStart: startTimeIso,
-      latestEnd: endTimeIso,
-      urgencyJustification: urgencyJustification.trim(),
-      urgencyEvaluation,
-    });
+    setIsSubmitting(true);
+
+    try {
+      const freshStartMs = Date.now() + hoursUntilStart * 3600 * 1000;
+      const freshStartIso = new Date(freshStartMs).toISOString();
+      const freshEndIso = new Date(freshStartMs + durationHours * 3600 * 1000).toISOString();
+
+      onSubmitBooking({
+        plotId: activePlot.id,
+        resourceId: activeResource.id,
+        intent,
+        cropStage: effectiveCropStage,
+        durationHours,
+        hoursUntilStart,
+        earliestStart: freshStartIso,
+        latestEnd: freshEndIso,
+        urgencyJustification: urgencyJustification.trim(),
+        urgencyEvaluation,
+        notes: notes.trim(),
+      });
+
+      // Clear inputs upon successful booking request
+      setUrgencyJustification('');
+      setNotes('');
+    } finally {
+      // 1500ms debounce cooldown to prevent rapid double-clicks
+      setTimeout(() => {
+        setIsSubmitting(false);
+      }, 1500);
+    }
   };
 
   return (
@@ -328,12 +406,35 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
         )}
       </div>
 
-      {/* Empty Plots Notification for Current User */}
-      {userPlots.length === 0 && (
+      {/* Unauthenticated Alert Banner */}
+      {!currentUser ? (
+        <div className="mb-6 p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-emerald-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-emerald-700 text-white flex items-center justify-center flex-shrink-0">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-xs sm:text-sm">Account Login Required to Request Machinery</div>
+              <div className="text-xs text-emerald-800">
+                Please log in with your mobile number to access your land plots and schedule equipment with Fair Turn priority.
+              </div>
+            </div>
+          </div>
+          {onOpenAuthModal && (
+            <button
+              type="button"
+              onClick={onOpenAuthModal}
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs whitespace-nowrap self-start sm:self-auto"
+            >
+              Log In / Register
+            </button>
+          )}
+        </div>
+      ) : userPlots.length === 0 ? (
         <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <div className="font-bold text-xs sm:text-sm">
-              {currentUser ? `No Farm Plots Registered for ${currentUser.fullName}` : 'No Farm Plots Registered'}
+              No Farm Plots Registered for {currentUser.fullName}
             </div>
             <div className="text-xs text-amber-800">
               Register your own land plot to calculate weather risk, soil compaction, and machine transit.
@@ -350,7 +451,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
             </button>
           )}
         </div>
-      )}
+      ) : null}
 
       {/* Empty Resources Notification */}
       {resources.length === 0 && (
@@ -403,7 +504,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
               ) : (
                 userPlots.map((plot) => (
                   <option key={plot.id} value={plot.id}>
-                    {plot.plotName} - {plot.acres} Acres ({plot.cropType} | {plot.cropStage} | {plot.village || 'Karnal'})
+                    {plot.plotName} - {plot.acres} Acres ({plot.cropType} | {plot.cropStage} | {plot.village || 'Shivamogga'})
                   </option>
                 ))
               )}
@@ -425,7 +526,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
             </label>
             {activeResource && (
               <span className="text-[11px] font-mono text-neutral-500">
-                Owner: <strong>{activeResource.ownerName}</strong> | Max Radius: {activeResource.maxRadiusKm || 50} km
+                Owner: <strong>{activeResource.ownerName}</strong> | Limit: {activeResource.maxRadiusKm || 50} km
               </span>
             )}
           </div>
@@ -436,16 +537,17 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
               onChange={(e) => handleResourceChange(e.target.value)}
               className="w-full appearance-none bg-neutral-50 hover:bg-neutral-100/70 border border-neutral-300 rounded-2xl px-4 py-3 text-xs sm:text-sm text-neutral-900 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
             >
-              {resources.length === 0 ? (
-                <option value="">No equipment listed yet</option>
+              {serviceableResources.length === 0 ? (
+                <option value="">No equipment within lender serviceable radius of this plot</option>
               ) : (
-                resources.map((r) => {
+                serviceableResources.map((r) => {
+                  const dist = calculateHaversineDistance(farmerLat, farmerLng, r.baseLat, r.baseLng);
                   const rateSuffix =
                     r.rateUnit === 'per_day' ? '/day' : r.rateUnit === 'per_acre' ? '/acre' : '/hr';
                   const isMine = currentUser && r.ownerId === currentUser.id;
                   return (
                     <option key={r.id} value={r.id}>
-                      {r.name} {isMine ? '(Your Machine)' : `(${r.ownerName})`} - ₹{r.hourlyRate}{rateSuffix} ({r.village || 'Local'} | {r.operationalStatus})
+                      {r.name} {isMine ? '(Your Machine)' : `(${r.ownerName})`} - ₹{r.hourlyRate}{rateSuffix} • {dist} km away (Service limit: {r.maxRadiusKm || 50} km)
                     </option>
                   );
                 })
@@ -530,6 +632,8 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
                 onChange={(e) => setHoursUntilStart(Number(e.target.value))}
                 className="w-full bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2.5 text-xs text-neutral-900 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
               >
+                <option value={0}>Immediate (Start Now / Active Window)</option>
+                <option value={0.5}>Within 30 Mins (Buffer Window)</option>
                 <option value={1}>Within 1 Hour (Urgent)</option>
                 <option value={3}>In 3 Hours (Afternoon)</option>
                 <option value={6}>In 6 Hours (Evening)</option>
@@ -667,12 +771,16 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
         <div className={`p-4 rounded-2xl border flex items-start gap-3 text-xs ${
           feasibility.isHardBlocker
             ? 'bg-rose-50 border-rose-200 text-rose-950'
+            : hasLockedOngoingCollision
+            ? 'bg-indigo-50 border-indigo-300 text-indigo-950'
             : feasibility.hasTimeCollision
             ? 'bg-amber-50 border-amber-300 text-amber-950'
             : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
         }`}>
           {feasibility.isHardBlocker ? (
             <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+          ) : hasLockedOngoingCollision ? (
+            <Lock className="w-5 h-5 text-indigo-700 flex-shrink-0 mt-0.5" />
           ) : feasibility.hasTimeCollision ? (
             <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           ) : (
@@ -682,6 +790,8 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
             <div className="font-extrabold text-sm">
               {feasibility.isHardBlocker
                 ? 'Operational Restriction (Unfeasible)'
+                : hasLockedOngoingCollision
+                ? '🔒 Ongoing / 30m Buffer Lock Active: Protected Shift + Remaining Turn Arbitration'
                 : feasibility.hasTimeCollision
                 ? '⚡ Competing Request Detected: Fair Turn Arbitration Available'
                 : 'Time Slot Feasible: Zero Machine Collisions'}
@@ -689,6 +799,8 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
             <p className="leading-relaxed">
               {feasibility.isHardBlocker
                 ? feasibility.conflictReason
+                : hasLockedOngoingCollision
+                ? `Machine is currently ongoing or within its 30-minute pre-start buffer window for ${feasibility.conflictingBooking?.farmerName || 'another farmer'}. That active shift will NOT be disturbed even if your priority score is higher; your request will automatically queue right after the ongoing shift (+${transitBuffer.totalBufferMinutes}m buffer) and compete strictly against any remaining future schedules.`
                 : feasibility.hasTimeCollision
                 ? `Machine is currently requested by ${feasibility.conflictingBooking?.farmerName || 'another farmer'} for ${feasibility.conflictingBooking?.plotName || 'their field'}. You may still submit: Fair Turn will arbitrate priority based on your Urgency Justification and Weather Risk.`
                 : `Machine is free for requested window. Transit buffer +${transitBuffer.totalBufferMinutes} min confirmed (distance: ${distanceKm.toFixed(1)} km).`}
@@ -734,27 +846,43 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
         )}
 
         {/* Submit Booking Button */}
-        <button
-          type="submit"
-          disabled={userPlots.length === 0 || resources.length === 0 || feasibility.isHardBlocker}
-          className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${
-            feasibility.hasTimeCollision
-              ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white shadow-amber-200'
-              : 'bg-emerald-700 hover:bg-emerald-800 text-white'
-          }`}
-        >
-          {feasibility.hasTimeCollision ? (
-            <>
-              <Sparkles className="w-4 h-4 text-amber-200" />
-              <span>Submit for Fair Turn Priority Arbitration</span>
-            </>
-          ) : (
-            <>
-              <span>Confirm Fair Allocation Request</span>
-              <ArrowRight className="w-4 h-4" />
-            </>
-          )}
-        </button>
+        {!currentUser ? (
+          <button
+            type="button"
+            onClick={onOpenAuthModal}
+            className="w-full py-3.5 px-6 rounded-2xl font-bold text-sm bg-emerald-700 hover:bg-emerald-800 text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          >
+            <Lock className="w-4 h-4" />
+            <span>Log In or Register to Request Equipment</span>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={isSubmitting || userPlots.length === 0 || resources.length === 0 || feasibility.isHardBlocker}
+            className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${
+              feasibility.hasTimeCollision
+                ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white shadow-amber-200'
+                : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+            }`}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Processing Allocation Request...</span>
+              </>
+            ) : feasibility.hasTimeCollision ? (
+              <>
+                <Sparkles className="w-4 h-4 text-amber-200" />
+                <span>Submit for Fair Turn Priority Arbitration</span>
+              </>
+            ) : (
+              <>
+                <span>Confirm Fair Allocation Request</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        )}
       </form>
     </div>
   );

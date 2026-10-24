@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Booking, BookingStatus, OperationalStatus, Plot, Profile, Resource, WeatherCondition } from '../types';
+import { appStorage } from './storage';
+import { getStoredJwtToken, setStoredJwtToken, loginWithGoogleViaBackend } from './api';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
@@ -150,10 +152,12 @@ function mapProfileRow(row: any): Profile {
   return {
     id: row.id,
     fullName: row.full_name,
-    phone: row.phone || '',
+    phone: row.phone || undefined,
+    email: row.email || undefined,
     village: row.village || undefined,
     state: row.state || undefined,
-    passwordPin: row.password_pin || undefined,
+    avatarUrl: row.avatar_url || undefined,
+    password: row.password_hash || undefined,
     trustScore: Number(row.trust_score || 100),
     roleFlags: Array.isArray(row.role_flags) ? row.role_flags : ['borrower', 'lender'],
   };
@@ -178,17 +182,125 @@ export async function dbGetProfiles(): Promise<Profile[]> {
   }
 }
 
+export async function dbGetProfileByIdOrEmail(id: string, email?: string): Promise<Profile | null> {
+  const c = getSupabaseClient();
+  if (!c) return null;
+  try {
+    let query = c.from('profiles').select('*');
+    if (email) {
+      query = query.or(`id.eq.${id},email.eq.${email.trim().toLowerCase()}`);
+    } else {
+      query = query.eq('id', id);
+    }
+    const { data, error } = await query.limit(1).maybeSingle();
+    if (!error && data) {
+      return mapProfileRow(data);
+    }
+    return null;
+  } catch (err) {
+    console.warn('[Supabase] dbGetProfileByIdOrEmail failed:', err);
+    return null;
+  }
+}
+
+export async function dbCheckCredentialConflict(params: {
+  email?: string;
+  phone?: string;
+  excludeUserId?: string;
+}): Promise<{ conflict: boolean; field?: 'email' | 'phone'; message?: string }> {
+  const c = getSupabaseClient();
+  const cleanEmail = params.email?.trim().toLowerCase();
+  const cleanPhone = params.phone?.replace(/[\s\-()]/g, '');
+
+  // 1. Check local storage users cache
+  const localUsers = appStorage.getUsers();
+  for (const u of localUsers) {
+    if (params.excludeUserId && u.id === params.excludeUserId) continue;
+    if (cleanEmail && u.email && u.email.trim().toLowerCase() === cleanEmail) {
+      return {
+        conflict: true,
+        field: 'email',
+        message: 'This email address is already registered. Please choose a different email or log in.',
+      };
+    }
+    if (cleanPhone && u.phone) {
+      const uPhone = u.phone.replace(/[\s\-()]/g, '');
+      if (uPhone === cleanPhone || uPhone.endsWith(cleanPhone) || cleanPhone.endsWith(uPhone)) {
+        return {
+          conflict: true,
+          field: 'phone',
+          message: 'This mobile number is already registered. Please choose a different number or log in.',
+        };
+      }
+    }
+  }
+
+  // 2. Query Supabase database profiles table directly
+  if (c && (cleanEmail || cleanPhone)) {
+    try {
+      if (cleanEmail) {
+        let q = c.from('profiles').select('id, email').eq('email', cleanEmail);
+        if (params.excludeUserId) {
+          q = q.neq('id', params.excludeUserId);
+        }
+        const { data: emailData } = await q.limit(1);
+        if (emailData && emailData.length > 0) {
+          return {
+            conflict: true,
+            field: 'email',
+            message: 'This email address is already registered. Please choose a different email or log in.',
+          };
+        }
+      }
+
+      if (cleanPhone) {
+        const variants = [
+          cleanPhone,
+          cleanPhone.startsWith('+91') ? cleanPhone : `+91${cleanPhone.replace(/^0+/, '')}`,
+          cleanPhone.replace(/^\+91/, ''),
+        ];
+        let q = c.from('profiles').select('id, phone').in('phone', variants);
+        if (params.excludeUserId) {
+          q = q.neq('id', params.excludeUserId);
+        }
+        const { data: phoneData } = await q.limit(1);
+        if (phoneData && phoneData.length > 0) {
+          return {
+            conflict: true,
+            field: 'phone',
+            message: 'This mobile number is already registered. Please choose a different number or log in.',
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[Supabase] Credential conflict check note:', err);
+    }
+  }
+
+  return { conflict: false };
+}
+
 export async function dbUpsertProfile(profile: Profile): Promise<Profile | null> {
   const c = getSupabaseClient();
   if (!c) return null;
   try {
-    const row = {
+    // Ensure we strictly store Bcrypt hashes and NEVER plain text passwords in the database!
+    const candidateHash =
+      profile.passwordHash ||
+      profile.password_hash ||
+      (profile.password && (profile.password.startsWith('$2b$') || profile.password.startsWith('$2a$'))
+        ? profile.password
+        : null);
+
+    const row: any = {
       id: profile.id,
       full_name: profile.fullName,
+      email: profile.email || null,
       phone: profile.phone || null,
       village: profile.village || null,
       state: profile.state || null,
-      password_pin: profile.passwordPin || null,
+      avatar_url: profile.avatarUrl || null,
+      password_hash: candidateHash || null,
       trust_score: profile.trustScore || 100,
       role_flags: profile.roleFlags,
       updated_at: new Date().toISOString(),
@@ -196,6 +308,14 @@ export async function dbUpsertProfile(profile: Profile): Promise<Profile | null>
     const { data, error } = await c.from('profiles').upsert(row, { onConflict: 'id' }).select().maybeSingle();
     if (error) {
       console.warn('[Supabase] dbUpsertProfile error:', error.message);
+      // Graceful fallback if email/avatar_url columns are pending SQL migration
+      if (error.message.includes('email') || error.message.includes('avatar_url') || error.message.includes('column')) {
+        const fallbackRow = { ...row };
+        delete fallbackRow.email;
+        delete fallbackRow.avatar_url;
+        const retry = await c.from('profiles').upsert(fallbackRow, { onConflict: 'id' }).select().maybeSingle();
+        return retry.data ? mapProfileRow(retry.data) : null;
+      }
       return null;
     }
     return data ? mapProfileRow(data) : null;
@@ -441,20 +561,35 @@ export async function dbUpdateBookingStatus(bookingId: string, status: BookingSt
   }
 }
 
-/**
- * Purges all records from Supabase tables (bookings, plots, resources, profiles)
- */
-export async function dbClearAllData(): Promise<boolean> {
+export async function dbDeleteBooking(bookingId: string): Promise<boolean> {
   const c = getSupabaseClient();
   if (!c) return false;
   try {
-    await c.from('bookings').delete().neq('id', 'non-existent');
-    await c.from('plots').delete().neq('id', 'non-existent');
-    await c.from('resources').delete().neq('id', 'non-existent');
-    await c.from('profiles').delete().neq('id', 'non-existent');
+    const { error } = await c.from('bookings').delete().eq('id', bookingId);
+    if (error) {
+      console.warn('[Supabase] dbDeleteBooking error:', error.message);
+      return false;
+    }
     return true;
   } catch (err) {
-    console.warn('[Supabase] dbClearAllData error:', err);
+    console.warn('[Supabase] dbDeleteBooking failed:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteBookings(bookingIds: string[]): Promise<boolean> {
+  if (!bookingIds.length) return true;
+  const c = getSupabaseClient();
+  if (!c) return false;
+  try {
+    const { error } = await c.from('bookings').delete().in('id', bookingIds);
+    if (error) {
+      console.warn('[Supabase] dbDeleteBookings error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] dbDeleteBookings failed:', err);
     return false;
   }
 }
@@ -468,7 +603,7 @@ export function subscribeToSupabaseChanges(onUpdate: () => void): () => void {
 
   try {
     const channel = c
-      .channel('farmgrid-db-live')
+      .channel('agrimart-db-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
         onUpdate();
       })
@@ -490,4 +625,218 @@ export function subscribeToSupabaseChanges(onUpdate: () => void): () => void {
     console.warn('[Supabase] Realtime subscription notice:', err);
     return () => {};
   }
+}
+
+/**
+ * Initiates the real Google OAuth 2.0 flow via Supabase Auth
+ */
+export async function signInWithGoogleOAuth(): Promise<{ success: boolean; error?: string }> {
+  const c = getSupabaseClient();
+  if (!c) {
+    return {
+      success: false,
+      error: 'Supabase is not configured. Please check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
+    };
+  }
+
+  try {
+    const { error } = await c.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account',
+        },
+      },
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Google OAuth failed to initialize.' };
+  }
+}
+
+/**
+ * Strips sensitive tokens (access_token, id_token, code) from browser address bar
+ * using window.history.replaceState to prevent token visibility in URLs.
+ */
+export function cleanAuthTokensFromUrl(): void {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  const hasHash =
+    window.location.hash &&
+    (window.location.hash.includes('access_token=') ||
+      window.location.hash.includes('id_token=') ||
+      window.location.hash.includes('token_type='));
+  const hasQuery =
+    window.location.search &&
+    (window.location.search.includes('code=') ||
+      window.location.search.includes('token=') ||
+      window.location.search.includes('access_token='));
+
+  if (hasHash || hasQuery) {
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+}
+
+/**
+ * Signs out from Supabase Auth explicitly.
+ */
+export async function supabaseSignOut(): Promise<void> {
+  const c = getSupabaseClient();
+  if (c) {
+    try {
+      await c.auth.signOut();
+    } catch (e) {
+      console.warn('[Supabase] signOut notice:', e);
+    }
+  }
+}
+
+/**
+ * Listens for Supabase OAuth session changes (e.g. Google redirect login)
+ */
+export function subscribeToAuthChanges(callback: (user: Profile | null) => void): () => void {
+  const c = getSupabaseClient();
+  if (!c) {
+    cleanAuthTokensFromUrl();
+    return () => {};
+  }
+
+  const processSessionUser = async (session: any) => {
+    if (!session?.user) return;
+    const u = session.user;
+
+    // Check if Google OAuth was intentionally initiated or returned via URL redirect
+    const googleInitiated =
+      typeof sessionStorage !== 'undefined' &&
+      sessionStorage.getItem('agrimart_google_auth_initiated') === 'true';
+
+    const isOAuthRedirectUrl =
+      typeof window !== 'undefined' &&
+      (window.location.hash.includes('access_token=') || window.location.search.includes('code='));
+
+    if (googleInitiated || isOAuthRedirectUrl) {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('agrimart_google_auth_initiated');
+      }
+      // Intentionally clear old local JWT when switching/logging into Google
+      setStoredJwtToken(null);
+    } else {
+      // Check if user is ALREADY authenticated with an active local account
+      const currentLocalUser = appStorage.getCurrentUser();
+      const storedJwt = getStoredJwtToken();
+      if (currentLocalUser && currentLocalUser.authProvider === 'local' && storedJwt) {
+        console.log('[Supabase OAuth] Active local user retained:', currentLocalUser.fullName);
+        return;
+      }
+    }
+
+    cleanAuthTokensFromUrl();
+
+    // 1. Check if a profile ALREADY exists in Supabase database for this user (by ID or Email)
+    const existing = await dbGetProfileByIdOrEmail(u.id, u.email);
+
+    // If an existing profile was found and has a village, the profile is ALREADY COMPLETED!
+    if (existing && existing.village && existing.village.trim() !== '') {
+      const completedUser: Profile = {
+        ...existing,
+        id: u.id,
+        email: existing.email || u.email || undefined,
+        avatarUrl: existing.avatarUrl || u.user_metadata?.avatar_url || u.user_metadata?.picture,
+        authProvider: 'google',
+      };
+      // Persist without wiping existing village
+      dbUpsertProfile(completedUser).catch(() => {});
+      callback(completedUser);
+      return;
+    }
+
+    // 2. If no village is in table, check if user_metadata in Supabase Auth has village (from earlier setup)
+    const metaVillage = u.user_metadata?.village;
+    if (metaVillage && metaVillage.trim() !== '') {
+      const completedFromMeta: Profile = {
+        id: u.id,
+        fullName: u.user_metadata?.full_name || u.user_metadata?.name || 'Kisan User',
+        phone: u.user_metadata?.phone || existing?.phone || u.phone || undefined,
+        email: u.email || existing?.email || undefined,
+        avatarUrl: u.user_metadata?.avatar_url || u.user_metadata?.picture || existing?.avatarUrl,
+        village: metaVillage.trim(),
+        state: u.user_metadata?.state || 'Haryana',
+        trustScore: 100,
+        roleFlags: u.user_metadata?.role_flags || ['borrower', 'lender'],
+        roles: ['borrower', 'lender', 'prosumer'],
+        authProvider: 'google',
+      };
+      dbUpsertProfile(completedFromMeta).catch(() => {});
+      callback(completedFromMeta);
+      return;
+    }
+
+    // 3. This is truly a fresh Google registration that needs onboarding
+    const newGoogleProfile: Profile = {
+      id: u.id,
+      fullName:
+        existing?.fullName ||
+        u.user_metadata?.full_name ||
+        u.user_metadata?.name ||
+        u.email?.split('@')[0] ||
+        'Kisan User',
+      phone: existing?.phone || u.phone || u.user_metadata?.phone || undefined,
+      email: u.email || existing?.email || undefined,
+      avatarUrl: u.user_metadata?.avatar_url || u.user_metadata?.picture || existing?.avatarUrl,
+      village: undefined,
+      state: existing?.state || u.user_metadata?.state || 'Haryana',
+      trustScore: 100,
+      roleFlags: existing?.roleFlags || ['borrower', 'lender'],
+      roles: ['borrower', 'lender', 'prosumer'],
+      authProvider: 'google',
+    };
+
+    // Notice: WE DO NOT CALL dbUpsertProfile here with village: null!
+    callback(newGoogleProfile);
+  };
+
+  // Check existing session
+  c.auth
+    .getSession()
+    .then(async ({ data: { session } }) => {
+      if (session?.user) {
+        await processSessionUser(session);
+      } else {
+        cleanAuthTokensFromUrl();
+      }
+    })
+    .catch((err) => {
+      cleanAuthTokensFromUrl();
+      console.warn('[Supabase] getSession notice:', err);
+    });
+
+  const {
+    data: { subscription },
+  } = c.auth.onAuthStateChange(async (event, session) => {
+    if (
+      session?.user &&
+      (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED')
+    ) {
+      await processSessionUser(session);
+    } else if (event === 'SIGNED_OUT') {
+      cleanAuthTokensFromUrl();
+      // Do NOT log out user if they have an active local session or FastAPI JWT
+      const current = appStorage.getCurrentUser();
+      const jwtToken = getStoredJwtToken();
+      if (!current && !jwtToken) {
+        callback(null);
+      }
+    }
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
 }

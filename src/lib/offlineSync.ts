@@ -1,10 +1,10 @@
 import { Booking, Resource, Plot } from '../types';
 import { computeDeterministicPriorityScore, calculateHaversineDistance, calculateTransitBuffer } from './engine';
 
-const OFFLINE_QUEUE_KEY = 'farmgrid_offline_booking_queue_v1';
-const OFFLINE_MODE_OVERRIDE_KEY = 'farmgrid_manual_offline_override_v1';
-const CACHED_RESOURCES_KEY = 'farmgrid_cached_resources_v1';
-const CACHED_PLOTS_KEY = 'farmgrid_cached_plots_v1';
+const OFFLINE_QUEUE_KEY = 'agrimart_offline_booking_queue_v1';
+const OFFLINE_MODE_OVERRIDE_KEY = 'agrimart_manual_offline_override_v1';
+const CACHED_RESOURCES_KEY = 'agrimart_cached_resources_v1';
+const CACHED_PLOTS_KEY = 'agrimart_cached_plots_v1';
 
 export type NetworkStatus = 'online' | 'offline';
 
@@ -18,6 +18,21 @@ class OfflineSyncManager {
 
   constructor() {
     if (typeof window !== 'undefined') {
+      // Seamlessly migrate legacy farmgrid offline keys to agrimart
+      const legacyKeys = [
+        ['farmgrid_offline_booking_queue_v1', OFFLINE_QUEUE_KEY],
+        ['farmgrid_manual_offline_override_v1', OFFLINE_MODE_OVERRIDE_KEY],
+        ['farmgrid_cached_resources_v1', CACHED_RESOURCES_KEY],
+        ['farmgrid_cached_plots_v1', CACHED_PLOTS_KEY],
+      ];
+      for (const [oldKey, newKey] of legacyKeys) {
+        const val = localStorage.getItem(oldKey);
+        if (val && !localStorage.getItem(newKey)) {
+          localStorage.setItem(newKey, val);
+          localStorage.removeItem(oldKey);
+        }
+      }
+
       const storedOverride = localStorage.getItem(OFFLINE_MODE_OVERRIDE_KEY);
       this.manualOfflineOverride = storedOverride === 'true';
 
@@ -299,7 +314,7 @@ class OfflineSyncManager {
       failedCount,
       summary: `Successfully synchronized ${syncedBookings.length} offline request${
         syncedBookings.length === 1 ? '' : 's'
-      } to FarmGrid Central.`,
+      } to AgriMart Central.`,
     };
   }
 

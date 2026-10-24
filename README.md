@@ -1,10 +1,10 @@
-﻿# FarmGrid
+# AgriMart
 
 > **AI-Powered Agricultural Machinery Sharing, Fair Turn Priority Arbitration & Dynamic Field Scheduling**
 
-FarmGrid is a modern, decentralized equipment-sharing and agricultural coordination platform engineered for farming communities, smallholder farmers, and rural custom hiring centers.
+AgriMart is a modern, decentralized equipment-sharing and agricultural coordination platform engineered for farming communities, smallholder farmers, and rural custom hiring centers.
 
-During narrow harvesting and planting windows, multiple farmers frequently compete for the same physical tractors, combine harvesters, and implement units. FarmGrid eliminates double-booking, arbitrary lender bias, and crop loss through a transparent, mathematical **Fair Turn Priority Engine**, automated **consecutive time-slot sequencing**, and **live weather risk intelligence**.
+During narrow harvesting and planting windows, multiple farmers frequently compete for the same physical tractors, combine harvesters, and implement units. AgriMart eliminates double-booking, arbitrary lender bias, and crop loss through a transparent, mathematical **Fair Turn Priority Engine**, automated **consecutive time-slot sequencing**, and **live weather risk intelligence**.
 
 ---
 
@@ -74,7 +74,7 @@ During narrow harvesting and planting windows, multiple farmers frequently compe
 ### 1. Clone the Repository
 ```bash
 git clone https://github.com/farhanbasha/FarmGuard-Pixel-Pirates.git
-cd FarmGrid
+cd AgriMart
 ```
 
 ### 2. Install Dependencies
@@ -121,7 +121,7 @@ npm run preview
 ## Project Structure
 
 ```
-FarmGrid/
+AgriMart/
 ├── src/
 │   ├── components/
 │   │   ├── ArbitrationModal.tsx       # Fair Turn arbitration scorecard & AI explanations

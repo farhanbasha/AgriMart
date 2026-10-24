@@ -1,7 +1,9 @@
-﻿/**
- * FarmGrid Twilio SMS & WhatsApp Dispatch Notification Service
+/**
+ * AgriMart Twilio SMS & WhatsApp Dispatch Notification Service
  * Dispatches automated alerts to farmers and equipment owners.
  */
+
+import { sendSmsViaFastAPI } from './api';
 
 const TWILIO_SID = (import.meta as any).env?.VITE_TWILIO_ACCOUNT_SID || '';
 const TWILIO_TOKEN = (import.meta as any).env?.VITE_TWILIO_AUTH_TOKEN || '';
@@ -19,9 +21,18 @@ export interface SMSDispatchResult {
 }
 
 /**
- * Sends real SMS notification via Twilio REST API, with fallback simulation.
+ * Sends real SMS notification via FastAPI backend `/api/v1/sms/send` first,
+ * falling back to client-side Twilio REST or simulation if offline.
  */
 async function sendTwilioSMS(to: string, messageBody: string): Promise<SMSDispatchResult> {
+  const fastApiRes = await sendSmsViaFastAPI(to, messageBody);
+  if (fastApiRes && fastApiRes.success) {
+    return {
+      success: true,
+      simulated: fastApiRes.mode !== 'LIVE_TWILIO',
+    };
+  }
+
   if (!isSMSConfigured()) {
     console.info('[SMS] Twilio not fully configured in environment; simulating alert dispatch.');
     return { success: true, simulated: true };
@@ -91,7 +102,7 @@ export async function sendBookingConfirmationSMS(params: {
   });
 
   const body =
-    `[FarmGrid Booking Confirmed]\n` +
+    `[AgriMart Booking Confirmed]\n` +
     `Namaste ${params.farmerName} ji,\n` +
     `Machine: ${params.resourceName}\n` +
     `Field: ${params.plotName}\n` +
@@ -99,7 +110,7 @@ export async function sendBookingConfirmationSMS(params: {
     `Transit Buffer: +${params.transitBufferMinutes} mins\n` +
     `Priority Score: ${params.priorityScore}/100\n` +
     `Estimated Total: Rs.${params.totalCostRupees.toLocaleString('en-IN')}\n` +
-    `FarmGrid Fair Turn Kisan Coordination`;
+    `AgriMart Fair Turn Kisan Coordination`;
 
   return sendTwilioSMS(params.farmerPhone, body);
 }
@@ -126,13 +137,13 @@ export async function sendDriverDispatchSMS(params: {
   });
 
   const body =
-    `[FarmGrid Dispatch Alert]\n` +
+    `[AgriMart Dispatch Alert]\n` +
     `Namaste ${params.ownerName} ji,\n` +
     `Booking received for: ${params.resourceName}\n` +
     `Farmer: ${params.farmerName}\n` +
     `Plot: ${params.plotName} (~${params.distanceKm.toFixed(1)} km away)\n` +
     `Slot Starts: ${timeFormatted} IST\n` +
-    `Please mobilize equipment accordingly. - FarmGrid`;
+    `Please mobilize equipment accordingly. - AgriMart`;
 
   return sendTwilioSMS(params.ownerPhone, body);
 }
@@ -149,11 +160,11 @@ export async function sendDisruptionAlertSMS(params: {
   substituteInfo?: string;
 }): Promise<SMSDispatchResult> {
   const body =
-    `[FarmGrid Urgent Alert]\n` +
+    `[AgriMart Urgent Alert]\n` +
     `Namaste ${params.farmerName} ji,\n` +
     `Your scheduled machine ${params.resourceName} encountered: ${params.reason}.\n` +
     (params.substituteInfo ? `Automated Substitute: ${params.substituteInfo}\n` : '') +
-    `Our village liaison is coordinating alternative allocation right now. - FarmGrid`;
+    `Our village liaison is coordinating alternative allocation right now. - AgriMart`;
 
   return sendTwilioSMS(params.farmerPhone, body);
 }

@@ -259,7 +259,7 @@ export const DisruptionSimulatorModal: React.FC<DisruptionSimulatorModalProps> =
             <div className="bg-neutral-50/90 rounded-2xl p-4 sm:p-5 border border-neutral-200 space-y-3 animate-fade-in shadow-2xs">
               <div className="flex items-center gap-2 text-xs font-bold text-emerald-900 uppercase tracking-wider">
                 <Sparkles className="w-4 h-4 text-emerald-600" />
-                <span>FarmGrid Autonomous Fleet Reroute Engine</span>
+                <span>AgriMart Autonomous Fleet Reroute Engine</span>
               </div>
               <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed">
                 {simulationResult.rationale}

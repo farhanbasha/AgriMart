@@ -1,7 +1,7 @@
-﻿import { WeatherCondition } from '../types';
+import { WeatherCondition } from '../types';
 
 /**
- * Weather Service Layer for FarmGrid
+ * Weather Service Layer for AgriMart
  *
  * Supports:
  * 1. OpenWeatherMap (5-day / 3-hour forecast & live weather via VITE_OPENWEATHER_API_KEY)

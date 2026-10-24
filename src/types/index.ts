@@ -1,16 +1,22 @@
-export type UserRole = 'borrower' | 'lender';
-
-export type UITheme = 'kisan_green' | 'swachh_slate' | 'dhoop_sunlight' | 'raat_dark';
+export type UserRole = 'borrower' | 'lender' | 'prosumer' | 'admin';
 
 export interface Profile {
   id: string;
   fullName: string;
-  phone: string;
+  phone?: string;
+  email?: string;
   village?: string;
   state?: string;
   trustScore: number;
   roleFlags: UserRole[];
+  roles?: string[];
+  permissions?: string[];
+  avatarUrl?: string;
+  password?: string;
   passwordPin?: string;
+  passwordHash?: string;
+  password_hash?: string;
+  authProvider?: 'local' | 'google';
 }
 
 export type CropStage = 'Vegetative' | 'Flowering' | 'Ripening' | 'Harvest-Ready' | 'Post-Harvest';

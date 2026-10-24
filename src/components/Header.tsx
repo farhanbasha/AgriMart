@@ -1,11 +1,11 @@
-﻿import React from 'react';
-import { UserRole, UITheme, Profile } from '../types';
+import React from 'react';
+import { UserRole, Profile } from '../types';
+import { Logo } from './Logo';
 import {
   Tractor,
   Wifi,
   WifiOff,
   RefreshCw,
-  Palette,
   PlusCircle,
   Search,
   CalendarCheck,
@@ -23,8 +23,6 @@ interface HeaderProps {
   onSelectTab: (tab: AppNavTab) => void;
   activeRole: UserRole;
   onRoleChange: (role: UserRole) => void;
-  onOpenUISelector: () => void;
-  currentTheme: UITheme;
   conflictCount: number;
   onOpenFairTurnModal: () => void;
   isOnline: boolean;
@@ -38,13 +36,46 @@ interface HeaderProps {
   isSupabaseConnected?: boolean;
 }
 
+const UserAvatar: React.FC<{ user: Profile }> = ({ user }) => {
+  const [imgError, setImgError] = React.useState(false);
+
+  React.useEffect(() => {
+    setImgError(false);
+  }, [user.avatarUrl]);
+
+  const initials = (user.fullName || '')
+    .split(' ')
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'U';
+
+  if (user.avatarUrl && !imgError) {
+    return (
+      <img
+        src={user.avatarUrl}
+        alt={user.fullName || 'User Avatar'}
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        onError={() => setImgError(true)}
+        className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl object-cover shadow-xs border border-emerald-300"
+      />
+    );
+  }
+
+  return (
+    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-800 text-white flex items-center justify-center font-bold text-[11px] sm:text-xs shadow-xs">
+      {initials}
+    </div>
+  );
+};
+
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onSelectTab,
   activeRole,
   onRoleChange,
-  onOpenUISelector,
-  currentTheme,
   conflictCount,
   onOpenFairTurnModal,
   isOnline,
@@ -61,19 +92,15 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/80 shadow-xs transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="h-16 flex items-center justify-between gap-4">
-          {/* Clean Logo & Brand Identity */}
+          {/* AgriMart Brand Logo */}
           <div className="flex items-center flex-shrink-0">
             <button
               type="button"
               onClick={() => onSelectTab('explore')}
-              className="flex items-center gap-2.5 text-left focus:outline-none group"
+              className="flex items-center gap-2.5 text-left focus:outline-none group hover:opacity-90 transition-opacity"
+              title="AgriMart Home"
             >
-              <div className="w-8 h-8 rounded-xl bg-emerald-700 flex items-center justify-center text-white shadow-xs font-black text-sm tracking-tight group-hover:bg-emerald-800 transition-colors">
-                FG
-              </div>
-              <span className="font-extrabold text-neutral-900 tracking-tight text-lg">
-                FarmGrid
-              </span>
+              <Logo size="md" />
             </button>
           </div>
 
@@ -221,20 +248,13 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-2 pl-1.5 sm:pl-2 border-l border-neutral-200">
               {currentUser ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-800 text-white flex items-center justify-center font-bold text-[11px] sm:text-xs shadow-xs">
-                    {currentUser.fullName
-                      .split(' ')
-                      .map((n) => n[0])
-                      .join('')
-                      .slice(0, 2)
-                      .toUpperCase() || 'U'}
-                  </div>
+                  <UserAvatar user={currentUser} />
                   <div className="hidden xl:block text-left">
                     <div className="text-xs font-bold text-neutral-900 leading-tight">
                       {currentUser.fullName}
                     </div>
-                    <div className="text-[10px] text-neutral-500 font-medium truncate max-w-[120px]">
-                      {currentUser.village || currentUser.phone}
+                    <div className="text-[10px] text-emerald-700 font-semibold truncate max-w-[120px]">
+                      {currentUser.roles?.join(' • ') || currentUser.village || currentUser.email || currentUser.phone}
                     </div>
                   </div>
                   {onLogout && (

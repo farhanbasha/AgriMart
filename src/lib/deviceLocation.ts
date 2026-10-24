@@ -1,5 +1,5 @@
-﻿/**
- * FarmGrid Automatic Device Geolocation Service
+/**
+ * AgriMart Automatic Device Geolocation Service
  *
  * Automatically triggers browser geolocation on entry (without requiring manual button clicks).
  * Reverse-geocodes coordinates using OpenWeatherMap Reverse Geocoding API to resolve place names.
@@ -17,13 +17,13 @@ export interface DeviceLocationState {
   updatedAt: string;
 }
 
-// Default regional fallback: Karnal, Haryana (Agricultural Hub)
+// Default regional fallback: Shivamogga, Karnataka (Agricultural Hub)
 const DEFAULT_LOCATION: DeviceLocationState = {
   latitude: 29.6857,
   longitude: 76.9905,
   accuracyMeters: 50,
-  placeName: 'Karnal',
-  stateName: 'Haryana',
+  placeName: 'Shivamogga',
+  stateName: 'Karnataka',
   countryCode: 'IN',
   status: 'idle',
   updatedAt: new Date().toISOString(),

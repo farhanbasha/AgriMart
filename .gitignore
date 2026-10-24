@@ -8,3 +8,7 @@ coverage/
 .env*
 !.env.example
 __pycache__/
+.venv/
+*.pyc
+.pytest_cache/
+__pycache__/

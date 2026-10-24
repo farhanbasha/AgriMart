@@ -1,10 +1,11 @@
 /**
- * FarmGrid Google Gemini AI Integration
+ * AgriMart Google Gemini AI Integration
  * Powered by @google/genai SDK with multi-dialect support (Hindi, Punjabi, Haryanvi, English).
  */
 
 import { GoogleGenAI } from '@google/genai';
 import { Booking, CropStage, IntentType, UrgencyEvaluationResult } from '../types';
+import { evaluateUrgencyViaFastAPI } from './api';
 
 function getGeminiKey(): string {
   try {
@@ -298,11 +299,38 @@ export async function evaluateUrgencyJustificationWithGemini(
     return heuristicFallback;
   }
 
+  // Attempt FastAPI backend urgency evaluation first
+  try {
+    const backendEval = await evaluateUrgencyViaFastAPI(
+      justificationText,
+      cropStage || 'Ripening',
+      weatherRainfallMm || 0
+    );
+    if (backendEval && typeof backendEval.verified_urgency_multiplier === 'number') {
+      const bonus = Number(
+        Math.min(10.0, Math.max(0.0, (backendEval.verified_urgency_multiplier - 1.0) * 10.0)).toFixed(1)
+      );
+      const rating = Math.min(10, Math.max(1, Math.round(bonus || 2)));
+      const threatLevel: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' =
+        bonus >= 7.5 ? 'CRITICAL' : bonus >= 5.0 ? 'HIGH' : bonus >= 2.5 ? 'MODERATE' : 'LOW';
+      return {
+        urgencyScoreBonus: bonus,
+        urgencyRating: rating,
+        threatLevel,
+        detectedThreats: heuristicFallback.detectedThreats,
+        cropLossRisk: heuristicFallback.cropLossRisk,
+        aiAnalysisSummary: backendEval.ai_reasoning || heuristicFallback.aiAnalysisSummary,
+      };
+    }
+  } catch {
+    // Seamless fallback to direct Gemini or local heuristic
+  }
+
   if (!isGeminiConfigured()) {
     return heuristicFallback;
   }
 
-  const prompt = `You are the FarmGrid Fair Turn Agricultural Priority AI for Indian farming communities.
+  const prompt = `You are the AgriMart Fair Turn Agricultural Priority AI for Indian farming communities.
 Analyze this farmer's urgency justification text written when requesting shared farm equipment:
 "${justificationText}"
 
@@ -378,7 +406,7 @@ export async function generateArbitrationExplanation(
   const winnerJustification = winner.urgencyJustification || 'High crop vulnerability and imminent weather threat';
   const loserJustification = loser.urgencyJustification || 'Standard scheduled request';
 
-  const prompt = `You are the FarmGrid Fair Turn Arbitration Coordinator explaining a fair equipment allocation between two Indian farmers.
+  const prompt = `You are the AgriMart Fair Turn Arbitration Coordinator explaining a fair equipment allocation between two Indian farmers.
 
 WINNER (Awarded Priority):
 - Farmer: ${winner.farmerName}
@@ -439,7 +467,7 @@ export async function generateDisruptionResponse(
   affectedBookings: Booking[],
   substituteNames: string[]
 ): Promise<GeminiDisruptionResult | null> {
-  const prompt = `You are the FarmGrid Crisis Coordinator. An agricultural disruption occurred in the village cluster.
+  const prompt = `You are the AgriMart Crisis Coordinator. An agricultural disruption occurred in the village cluster.
 Event: ${disruptionType.replace('_', ' ')}
 Equipment Impacted: ${resourceName}
 Impacted Bookings Count: ${affectedBookings.length}

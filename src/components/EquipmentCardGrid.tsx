@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plot, Resource, ResourceCategory, Profile } from '../types';
 import { calculateHaversineDistance } from '../lib/engine';
 import { getDeviceLocation, subscribeDeviceLocation, DeviceLocationState } from '../lib/deviceLocation';
@@ -81,8 +81,7 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<ResourceCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [maxDistanceKm, setMaxDistanceKm] = useState<number>(50);
-  const [strictlyWithinLenderRadius, setStrictlyWithinLenderRadius] = useState<boolean>(true);
+  const [maxDistanceKm, setMaxDistanceKm] = useState<number>(60);
   const [deviceLoc, setDeviceLoc] = useState<DeviceLocationState>(() => getDeviceLocation());
 
   useEffect(() => {
@@ -126,14 +125,27 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
   }, [resources, originLat, originLng, maxDistanceKm]);
 
   // Filtered by category, search query, lender radius, and user distance slider
+  // Strict rule: If farmer is beyond lender's maxRadiusKm, machine is strictly hidden unless farmer owns it!
   const filteredResources = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return resourcesWithDistance.filter((res) => {
-      const matchCat = selectedCategory === 'all' || res.category === selectedCategory;
-      const matchUserDist = res.computedDistanceKm <= maxDistanceKm;
-      const matchLenderRadius = !strictlyWithinLenderRadius || res.isWithinLenderRadius;
+      const isMine = Boolean(currentUser && res.ownerId === currentUser.id);
 
-      if (!matchCat || !matchUserDist || !matchLenderRadius) return false;
+      // Strict lender cutoff: other farmers > maxRadiusKm away cannot even see this service/machine
+      if (!isMine && !res.isWithinLenderRadius) {
+        return false;
+      }
+
+      // Filter by category
+      if (selectedCategory !== 'all' && res.category !== selectedCategory) {
+        return false;
+      }
+
+      // User distance preference slider
+      if (res.computedDistanceKm > maxDistanceKm) {
+        return false;
+      }
+
       if (!q) return true;
 
       const matchName = res.name.toLowerCase().includes(q);
@@ -143,16 +155,16 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
 
       return matchName || matchSpecs || matchVillage || matchOwner;
     });
-  }, [resourcesWithDistance, selectedCategory, searchQuery, maxDistanceKm, strictlyWithinLenderRadius]);
+  }, [resourcesWithDistance, selectedCategory, searchQuery, maxDistanceKm, currentUser]);
 
-  // Featured emergency resource (Highest-rated machinery)
+  // Featured emergency resource (Highest-rated machinery strictly within serviceable area)
   const featuredResource = useMemo(() => {
     return (
-      resourcesWithDistance.find(
-        (r) => r.category === 'machinery' && r.operationalStatus === 'available' && r.isWithinLenderRadius
-      ) || resourcesWithDistance[0]
+      filteredResources.find(
+        (r) => r.category === 'machinery' && r.operationalStatus === 'available'
+      ) || filteredResources[0] || null
     );
-  }, [resourcesWithDistance]);
+  }, [filteredResources]);
 
   const handleSelectSuggestion = (text: string) => {
     const clean = text.split('(')[0].trim();
@@ -181,26 +193,21 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
           </p>
         </div>
 
-        {/* Lender Radius Toggle & Distance Range Slider */}
+        {/* Lender Geofence Indicator & Distance Range Slider */}
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 bg-emerald-50/70 border border-emerald-200/80 px-3 py-1.5 rounded-2xl text-xs font-bold text-emerald-950 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={strictlyWithinLenderRadius}
-              onChange={(e) => setStrictlyWithinLenderRadius(e.target.checked)}
-              className="accent-emerald-700 w-4 h-4 rounded"
-            />
-            <span>Lender Radius (≤50km)</span>
-          </label>
+          <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-900 border border-emerald-200/80 px-3 py-1.5 rounded-2xl text-xs font-semibold">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Lender Service Radius Enforced (Haversine)</span>
+          </div>
 
           <div className="flex items-center gap-2 bg-neutral-50/80 px-3.5 py-1.5 rounded-2xl border border-neutral-200/80 text-xs">
             <Sliders className="w-3.5 h-3.5 text-neutral-500" />
-            <span className="text-neutral-600 font-medium">Max Dist:</span>
+            <span className="text-neutral-600 font-medium">Filter Dist:</span>
             <strong className="text-neutral-900 font-bold font-mono">{maxDistanceKm} km</strong>
             <input
               type="range"
               min={5}
-              max={60}
+              max={100}
               step={5}
               value={maxDistanceKm}
               onChange={(e) => setMaxDistanceKm(Number(e.target.value))}
@@ -232,7 +239,7 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
                 {featuredResource.name}
               </h3>
               <p className="text-xs text-emerald-100/85 leading-relaxed">
-                {featuredResource.specs}. Base depot in {featuredResource.village || 'Karnal'} ({featuredResource.computedDistanceKm} km from you).
+                {featuredResource.specs}. Base depot in {featuredResource.village || 'Shivamogga'} ({featuredResource.computedDistanceKm} km from you).
               </p>
               <div className="flex flex-wrap items-center gap-3 text-xs text-emerald-200 pt-1">
                 <span className="flex items-center gap-1 font-mono font-bold text-white text-base">
@@ -352,12 +359,12 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
           <p className="text-sm font-bold text-neutral-800">
             {resources.length === 0
               ? 'No machinery or services listed in community registry yet'
-              : 'No machinery or services found within specified lender radius'}
+              : 'No machinery or services available within lender serviceable distance'}
           </p>
-          <p className="text-xs text-neutral-500 mt-1">
+          <p className="text-xs text-neutral-500 mt-1 max-w-md mx-auto">
             {resources.length === 0
               ? 'Be the first to list a tractor, harvester, drone, or farm labour team to start sharing.'
-              : 'Try unchecking the lender radius filter or expanding your distance slider.'}
+              : 'Lenders specify a maximum serviceable radius using the Haversine formula. Equipment outside their service area is automatically hidden.'}
           </p>
           {onNavigateToAdd && (
             <button
@@ -422,14 +429,9 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
                         <ShieldCheck className="w-3 h-3 text-emerald-700" />
                         Your Listing
                       </span>
-                    ) : item.isWithinLenderRadius ? (
-                      <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        In Service Area
-                      </span>
                     ) : (
-                      <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        Exceeds Radius
+                      <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        In Service Area (≤{item.lenderMaxRadiusKm} km)
                       </span>
                     )}
                   </div>

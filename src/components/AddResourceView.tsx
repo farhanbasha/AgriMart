@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Tractor,
   Users,
@@ -13,9 +13,12 @@ import {
   Sparkles,
   ShieldAlert,
   UserCheck,
+  Navigation,
+  Crosshair,
 } from 'lucide-react';
 import { ResourceCategory, Resource, Plot, CropStage, Profile } from '../types';
 import { appStorage } from '../lib/storage';
+import { getDeviceLocation } from '../lib/deviceLocation';
 
 interface AddResourceViewProps {
   onResourceAdded: (resource: Resource) => void;
@@ -50,12 +53,109 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
   const [operatingHours, setOperatingHours] = useState('06:00 AM - 08:00 PM');
   const [maxRadiusKm, setMaxRadiusKm] = useState<number>(30);
 
-  // Plot Form Fields
+  // Machine Base Coordinates (Auto-detected via GPS + Manual Override)
+  const [machineLat, setMachineLat] = useState<number>(() => getDeviceLocation().latitude || 29.6857);
+  const [machineLng, setMachineLng] = useState<number>(() => getDeviceLocation().longitude || 76.9905);
+  const [isDetectingMachineGps, setIsDetectingMachineGps] = useState(false);
+  const [machineGpsStatus, setMachineGpsStatus] = useState<string>('');
+
+  // Plot Form Fields (Auto-detected via GPS + Manual Override)
   const [plotName, setPlotName] = useState('');
   const [acres, setAcres] = useState<number>(5);
   const [acreUnit, setAcreUnit] = useState<'acre' | 'bigha'>('acre');
   const [cropType, setCropType] = useState('Basmati Rice');
   const [cropStage, setCropStage] = useState<CropStage>('Harvest-Ready');
+  const [plotLat, setPlotLat] = useState<number>(() => getDeviceLocation().latitude || 29.6857);
+  const [plotLng, setPlotLng] = useState<number>(() => getDeviceLocation().longitude || 76.9905);
+  const [isDetectingPlotGps, setIsDetectingPlotGps] = useState(false);
+  const [plotGpsStatus, setPlotGpsStatus] = useState<string>('');
+
+  // Detect Machine Location
+  const handleDetectMachineGPS = (autoFillVillage = false) => {
+    setIsDetectingMachineGps(true);
+    setMachineGpsStatus('Acquiring machine GPS location...');
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(5));
+          const lng = Number(pos.coords.longitude.toFixed(5));
+          const acc = Math.round(pos.coords.accuracy || 20);
+          setMachineLat(lat);
+          setMachineLng(lng);
+          setIsDetectingMachineGps(false);
+          setMachineGpsStatus(`Machine GPS Attached: ${lat}°N, ${lng}°E (±${acc}m accuracy)`);
+          if (autoFillVillage) {
+            const dev = getDeviceLocation();
+            if (dev.placeName && !dev.placeName.includes('°')) setVillage(dev.placeName);
+            if (dev.stateName) setState(dev.stateName);
+          }
+        },
+        (err) => {
+          console.warn('[AddResourceView] Machine GPS error:', err.message);
+          const dev = getDeviceLocation();
+          setMachineLat(dev.latitude || 29.6857);
+          setMachineLng(dev.longitude || 76.9905);
+          setIsDetectingMachineGps(false);
+          setMachineGpsStatus('GPS fix unavailable. Using device default (you can edit coordinates manually).');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      );
+    } else {
+      const dev = getDeviceLocation();
+      setMachineLat(dev.latitude || 29.6857);
+      setMachineLng(dev.longitude || 76.9905);
+      setIsDetectingMachineGps(false);
+      setMachineGpsStatus('Geolocation not supported by browser. Enter coordinates manually.');
+    }
+  };
+
+  // Detect Plot Location
+  const handleDetectPlotGPS = (autoFillVillage = false) => {
+    setIsDetectingPlotGps(true);
+    setPlotGpsStatus('Acquiring plot GPS location...');
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(5));
+          const lng = Number(pos.coords.longitude.toFixed(5));
+          const acc = Math.round(pos.coords.accuracy || 20);
+          setPlotLat(lat);
+          setPlotLng(lng);
+          setIsDetectingPlotGps(false);
+          setPlotGpsStatus(`Field GPS Attached: ${lat}°N, ${lng}°E (±${acc}m accuracy)`);
+          if (autoFillVillage) {
+            const dev = getDeviceLocation();
+            if (dev.placeName && !dev.placeName.includes('°')) setVillage(dev.placeName);
+            if (dev.stateName) setState(dev.stateName);
+          }
+        },
+        (err) => {
+          console.warn('[AddResourceView] Plot GPS error:', err.message);
+          const dev = getDeviceLocation();
+          setPlotLat(dev.latitude || 29.6857);
+          setPlotLng(dev.longitude || 76.9905);
+          setIsDetectingPlotGps(false);
+          setPlotGpsStatus('GPS fix unavailable. Using device default (you can edit coordinates manually).');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      );
+    } else {
+      const dev = getDeviceLocation();
+      setPlotLat(dev.latitude || 29.6857);
+      setPlotLng(dev.longitude || 76.9905);
+      setIsDetectingPlotGps(false);
+      setPlotGpsStatus('Geolocation not supported by browser. Enter coordinates manually.');
+    }
+  };
+
+  // Automatically trigger location detection on entry or tab change
+  useEffect(() => {
+    if (activeTab === 'plot') {
+      handleDetectPlotGPS(true);
+    } else {
+      handleDetectMachineGPS(true);
+    }
+  }, [activeTab]);
 
   // Keep owner fields updated with currentUser
   useEffect(() => {
@@ -76,23 +176,28 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
   const handleAddResource = (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!currentUser) {
+      if (onOpenAuthModal) onOpenAuthModal();
+      return;
+    }
+
     if (activeTab === 'plot') {
       if (!plotName.trim()) return;
-      const farmerId = currentUser?.id || 'guest-farmer';
-      const farmerName = currentUser?.fullName || ownerName.trim() || 'Community Farmer';
+      const farmerId = currentUser.id;
+      const farmerName = currentUser.fullName;
 
       const newPlot = appStorage.addPlot({
         farmerId,
         farmerName,
         plotName: plotName.trim(),
-        village: village.trim() || currentUser?.village || 'Karnal',
-        state: state.trim() || currentUser?.state || 'Haryana',
+        village: village.trim() || currentUser?.village || 'Shivamogga',
+        state: state.trim() || currentUser?.state || 'Karnataka',
         acres: Number(acres) || 1,
         acreUnit,
         cropType: cropType.trim() || 'Wheat',
         cropStage,
-        latitude: 29.68,
-        longitude: 76.99,
+        latitude: Number(plotLat) || 29.6857,
+        longitude: Number(plotLng) || 76.9905,
         weather: {
           rainfallMm: 4.0,
           rainProbabilityPercent: 20,
@@ -124,9 +229,9 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
         : 'machinery';
 
     // Strict owner association:
-    const ownerId = currentUser?.id || 'guest-owner';
-    const finalOwnerName = currentUser?.fullName || ownerName.trim() || 'Equipment Owner';
-    const finalOwnerPhone = currentUser?.phone || ownerPhone.trim() || '';
+    const ownerId = currentUser.id;
+    const finalOwnerName = currentUser.fullName;
+    const finalOwnerPhone = currentUser.phone || ownerPhone.trim() || '';
 
     const newResource = appStorage.addResource({
       ownerId,
@@ -139,13 +244,13 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
       rateUnit,
       conditionRating: 4.9,
       operationalStatus: 'available',
-      village: village.trim() || 'Karnal',
-      state: state.trim() || 'Haryana',
+      village: village.trim() || 'Shivamogga',
+      state: state.trim() || 'Karnataka',
       capacityOrWorkers: capacityOrWorkers.trim() || undefined,
       operatingHours,
       maxRadiusKm: Number(maxRadiusKm) || 30,
-      baseLat: 29.68,
-      baseLng: 76.99,
+      baseLat: Number(machineLat) || 29.6857,
+      baseLng: Number(machineLng) || 76.9905,
     });
 
     onResourceAdded(newResource);
@@ -405,6 +510,68 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
                 </div>
               </div>
 
+              {/* Field GPS Coordinates (Auto-detected via GPS + Manual Override) */}
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
+                    <Navigation className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Field GPS Coordinates (Auto-Detected)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDetectPlotGPS(true)}
+                    disabled={isDetectingPlotGps}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[11px] font-bold transition-all shadow-2xs"
+                  >
+                    <Crosshair className={`w-3 h-3 text-emerald-700 ${isDetectingPlotGps ? 'animate-spin' : ''}`} />
+                    <span>{isDetectingPlotGps ? 'Locating...' : 'Re-detect GPS'}</span>
+                  </button>
+                </div>
+
+                {plotGpsStatus && (
+                  <p className="text-[11px] text-emerald-800/90 flex items-center gap-1 font-medium">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                    <span>{plotGpsStatus}</span>
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-700 mb-0.5">
+                      Latitude (°N) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.00001"
+                      min="-90"
+                      max="90"
+                      required
+                      value={plotLat}
+                      onChange={(e) => setPlotLat(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-neutral-300 text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-700 mb-0.5">
+                      Longitude (°E) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.00001"
+                      min="-180"
+                      max="180"
+                      required
+                      value={plotLng}
+                      onChange={(e) => setPlotLng(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-neutral-300 text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-neutral-500">
+                  Detected automatically via GPS. You can also modify coordinates manually to pinpoint your exact plot.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 mb-1">
@@ -530,6 +697,124 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
                 />
               </div>
 
+              {/* Machine Base Coordinates (Auto-detected via GPS + Manual Override) */}
+              <div className="p-3.5 bg-neutral-50 border border-neutral-200/90 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-900">
+                    <Navigation className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Machine Base Depot Location (Auto-Detected GPS)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDetectMachineGPS(true)}
+                    disabled={isDetectingMachineGps}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-neutral-100 text-emerald-800 border border-neutral-300 rounded-xl text-[11px] font-bold transition-all shadow-2xs"
+                  >
+                    <Crosshair className={`w-3 h-3 text-emerald-700 ${isDetectingMachineGps ? 'animate-spin' : ''}`} />
+                    <span>{isDetectingMachineGps ? 'Locating...' : 'Re-detect GPS'}</span>
+                  </button>
+                </div>
+
+                {machineGpsStatus && (
+                  <p className="text-[11px] text-emerald-800 flex items-center gap-1 font-medium">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                    <span>{machineGpsStatus}</span>
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-700 mb-0.5">
+                      Base Latitude (°N) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.00001"
+                      min="-90"
+                      max="90"
+                      required
+                      value={machineLat}
+                      onChange={(e) => setMachineLat(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-neutral-300 text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-700 mb-0.5">
+                      Base Longitude (°E) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.00001"
+                      min="-180"
+                      max="180"
+                      required
+                      value={machineLng}
+                      onChange={(e) => setMachineLng(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-neutral-300 text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-neutral-500">
+                  Taken automatically from your device GPS when adding. You can adjust latitude and longitude manually.
+                </p>
+              </div>
+
+              {/* Service Radius & Haversine Distance Guarantee */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200/90 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-neutral-900">
+                    Max Serviceable Distance *
+                  </label>
+                  <span className="text-xs font-extrabold font-mono text-emerald-900 bg-white px-2.5 py-0.5 rounded-lg border border-amber-200">
+                    {maxRadiusKm} km Radius
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="5"
+                    max="100"
+                    step="5"
+                    value={maxRadiusKm}
+                    onChange={(e) => setMaxRadiusKm(parseInt(e.target.value) || 30)}
+                    className="w-full accent-emerald-600 cursor-pointer"
+                  />
+                  <input
+                    type="number"
+                    min="5"
+                    max="150"
+                    value={maxRadiusKm}
+                    onChange={(e) => setMaxRadiusKm(parseInt(e.target.value) || 30)}
+                    className="w-20 px-2.5 py-1.5 rounded-xl border border-neutral-300 text-xs font-bold font-mono text-center bg-white"
+                  />
+                  <span className="text-xs font-bold text-neutral-500">km</span>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mr-1">Presets:</span>
+                  {[15, 30, 40, 50, 75].map((km) => (
+                    <button
+                      key={km}
+                      type="button"
+                      onClick={() => setMaxRadiusKm(km)}
+                      className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold font-mono transition-all ${
+                        maxRadiusKm === km
+                          ? 'bg-emerald-700 text-white shadow-2xs'
+                          : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
+                      }`}
+                    >
+                      {km} km
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-[11px] text-amber-950/90 leading-relaxed pt-1">
+                  <strong>Haversine Formula Rule:</strong> Farmers whose land is further than <strong>{maxRadiusKm} km</strong> from this machine depot will <strong>not be able to see this listing</strong>. Only nearby farmers within this radius will discover and request your equipment.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 mb-1">
@@ -545,14 +830,13 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 mb-1">
-                    Service Radius (km)
+                    Daily Operating Window
                   </label>
                   <input
-                    type="number"
-                    min="5"
-                    max="100"
-                    value={maxRadiusKm}
-                    onChange={(e) => setMaxRadiusKm(parseInt(e.target.value) || 30)}
+                    type="text"
+                    placeholder="e.g. 06:00 AM - 08:00 PM"
+                    value={operatingHours}
+                    onChange={(e) => setOperatingHours(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
@@ -668,7 +952,11 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
                 </div>
                 <div className="text-neutral-500">
                   <MapPin className="w-3.5 h-3.5 inline mr-1 text-neutral-400" />
-                  {village || 'Karnal'}, {state || 'Haryana'}
+                  {village || 'Shivamogga'}, {state || 'Karnataka'}
+                </div>
+                <div className="text-emerald-800 font-mono text-[11px] pt-1 flex items-center gap-1">
+                  <Crosshair className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  <span>GPS: {Number(plotLat).toFixed(4)}°N, {Number(plotLng).toFixed(4)}°E</span>
                 </div>
               </div>
 
@@ -708,10 +996,22 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
                 </div>
               )}
 
+              {/* GPS Base Depot & Haversine Radius Badges */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center gap-1.5 text-xs text-neutral-700 bg-neutral-50 p-2.5 rounded-xl border border-neutral-100 font-mono">
+                  <Crosshair className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  <span>Depot GPS: <strong>{Number(machineLat).toFixed(4)}°N, {Number(machineLng).toFixed(4)}°E</strong></span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-amber-950 bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/80">
+                  <Navigation className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  <span>Max Serviceable: <strong>{maxRadiusKm} km</strong> (Haversine cutoff)</span>
+                </div>
+              </div>
+
               <div className="pt-2 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
                 <div className="flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-neutral-400" />
-                  <span>{village || 'Karnal'}</span>
+                  <span>{village || 'Shivamogga'}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-neutral-700 font-medium">
                   <Phone className="w-3.5 h-3.5 text-emerald-600" />

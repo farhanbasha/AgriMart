@@ -1,5 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Booking, ConflictRecord, Resource, Profile } from '../types';
+import {
+  filterNonElapsedBookings,
+  getBookingLiveTimeState,
+} from '../lib/engine';
 import {
   Clock,
   AlertTriangle,
@@ -16,6 +20,7 @@ import {
   Navigation,
   XCircle,
   Filter,
+  Lock,
 } from 'lucide-react';
 
 interface MasterTimelineProps {
@@ -36,6 +41,15 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
   currentUser,
 }) => {
   const [statusFilter, setStatusFilter] = useState<'active' | 'all' | 'cancelled'>('active');
+  const [nowTick, setNowTick] = useState<Date>(() => new Date());
+
+  // Tick every 15 seconds so elapsed bookings disappear automatically and 30m buffer locks update live
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowTick(new Date());
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Format ISO time to readable 12-hour format
   const formatTime = (isoString: string) => {
@@ -70,12 +84,17 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
     }
   };
 
+  // Always exclude any booking whose scheduled endTime has elapsed (endTime <= nowTick)
+  const nonElapsedBookings = useMemo(() => {
+    return filterNonElapsedBookings(bookings, nowTick.getTime()).activeBookings;
+  }, [bookings, nowTick]);
+
   const filteredBookings = useMemo(() => {
-    let list = bookings;
+    let list = nonElapsedBookings;
     if (statusFilter === 'active') {
-      list = bookings.filter((b) => b.status !== 'cancelled');
+      list = nonElapsedBookings.filter((b) => b.status !== 'cancelled');
     } else if (statusFilter === 'cancelled') {
-      list = bookings.filter((b) => b.status === 'cancelled');
+      list = nonElapsedBookings.filter((b) => b.status === 'cancelled');
     }
     // Sort chronologically by startTime ascending, ties broken by priorityScore descending
     return [...list].sort((a, b) => {
@@ -83,7 +102,7 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
       if (timeDiff !== 0) return timeDiff;
       return (b.priorityScore || 0) - (a.priorityScore || 0);
     });
-  }, [bookings, statusFilter]);
+  }, [nonElapsedBookings, statusFilter]);
 
   const handleCancelClick = (booking: Booking) => {
     if (!onCancelBooking) return;
@@ -123,7 +142,7 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
-              Active ({bookings.filter((b) => b.status !== 'cancelled').length})
+              Active ({nonElapsedBookings.filter((b) => b.status !== 'cancelled').length})
             </button>
             <button
               type="button"
@@ -134,7 +153,7 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
-              All ({bookings.length})
+              All ({nonElapsedBookings.length})
             </button>
             <button
               type="button"
@@ -145,7 +164,7 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
-              Cancelled ({bookings.filter((b) => b.status === 'cancelled').length})
+              Cancelled ({nonElapsedBookings.filter((b) => b.status === 'cancelled').length})
             </button>
           </div>
 
@@ -210,6 +229,7 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
           {filteredBookings.map((booking) => {
             const isCancelled = booking.status === 'cancelled';
             const isFarmerOwner = currentUser && booking.farmerId === currentUser.id;
+            const liveState = !isCancelled ? getBookingLiveTimeState(booking, nowTick.getTime(), 30) : 'upcoming';
 
             return (
               <div key={booking.id} className="space-y-3">
@@ -218,6 +238,10 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
                   className={`p-4 sm:p-5 rounded-3xl border transition-all ${
                     isCancelled
                       ? 'border-neutral-200 bg-neutral-50/70 opacity-75'
+                      : liveState === 'ongoing'
+                      ? 'border-emerald-500 bg-emerald-50/30 shadow-xs'
+                      : liveState === 'buffer_locked'
+                      ? 'border-indigo-400 bg-indigo-50/30 shadow-xs'
                       : booking.isOfflineCached
                       ? 'border-amber-300 bg-amber-50/40 shadow-xs'
                       : booking.status === 'in_conflict'
@@ -264,6 +288,21 @@ export const MasterTimeline: React.FC<MasterTimelineProps> = ({
                             <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1 font-mono">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                               <span>Confirmed</span>
+                            </span>
+                          )}
+
+                          {/* Live Ongoing / 30m Buffer Lock Protection Badge */}
+                          {!isCancelled && liveState === 'ongoing' && (
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-700 text-white border border-emerald-800 flex items-center gap-1 font-mono shadow-2xs">
+                              <Lock className="w-3 h-3 text-emerald-200" />
+                              <span>ONGOING NOW • PRIORITY LOCKED</span>
+                            </span>
+                          )}
+
+                          {!isCancelled && liveState === 'buffer_locked' && (
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-700 text-white border border-indigo-800 flex items-center gap-1 font-mono shadow-2xs">
+                              <Lock className="w-3 h-3 text-indigo-200" />
+                              <span>30M BUFFER LOCK • MOBILIZING</span>
                             </span>
                           )}
 

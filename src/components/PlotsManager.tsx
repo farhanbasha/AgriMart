@@ -1,8 +1,24 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plot, CropStage, Profile } from '../types';
-import { MapPin, CloudRain, Plus, Trash2, CalendarCheck, Sun, AlertTriangle, RefreshCw, UserCheck, ShieldAlert } from 'lucide-react';
+import {
+  MapPin,
+  CloudRain,
+  Plus,
+  Trash2,
+  CalendarCheck,
+  Sun,
+  AlertTriangle,
+  RefreshCw,
+  UserCheck,
+  ShieldAlert,
+  Crosshair,
+  Navigation,
+  CheckCircle2,
+  Lock,
+} from 'lucide-react';
 import { appStorage } from '../lib/storage';
 import { getLiveWeatherForCoordinates } from '../lib/weather';
+import { getDeviceLocation } from '../lib/deviceLocation';
 
 interface PlotsManagerProps {
   plots: Plot[];
@@ -25,18 +41,72 @@ export const PlotsManager: React.FC<PlotsManagerProps> = ({
   const [cropType, setCropType] = useState('Basmati Rice');
   const [cropStage, setCropStage] = useState<CropStage>('Harvest-Ready');
   const [village, setVillage] = useState(currentUser?.village || '');
-  const [state, setState] = useState(currentUser?.state || 'Haryana');
+  const [state, setState] = useState(currentUser?.state || 'Karnataka');
+  const [plotLat, setPlotLat] = useState<number>(() => getDeviceLocation().latitude || 29.6857);
+  const [plotLng, setPlotLng] = useState<number>(() => getDeviceLocation().longitude || 76.9905);
+  const [isDetectingGps, setIsDetectingGps] = useState(false);
+  const [gpsStatusText, setGpsStatusText] = useState<string>('');
   const [refreshingPlotId, setRefreshingPlotId] = useState<string | null>(null);
 
-  // STRICT OWNERSHIP FILTER:
+  // Automatic GPS Location Detection with Manual Fallback
+  const handleDetectGPS = (autoFillVillage = false) => {
+    setIsDetectingGps(true);
+    setGpsStatusText('Acquiring live GPS fix from device...');
+
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(5));
+          const lng = Number(pos.coords.longitude.toFixed(5));
+          const accuracy = Math.round(pos.coords.accuracy || 20);
+          setPlotLat(lat);
+          setPlotLng(lng);
+          setIsDetectingGps(false);
+          setGpsStatusText(`GPS Attached: ${lat}°N, ${lng}°E (±${accuracy}m accuracy)`);
+
+          if (autoFillVillage) {
+            const dev = getDeviceLocation();
+            if (dev.placeName && !dev.placeName.includes('°')) {
+              setVillage(dev.placeName);
+            }
+            if (dev.stateName) {
+              setState(dev.stateName);
+            }
+          }
+        },
+        (err) => {
+          console.warn('[PlotsManager] Geolocation notice:', err.message);
+          const dev = getDeviceLocation();
+          setPlotLat(dev.latitude || 29.6857);
+          setPlotLng(dev.longitude || 76.9905);
+          setIsDetectingGps(false);
+          setGpsStatusText('Browser GPS unavailable. Using device location (you can adjust coordinates manually below).');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      );
+    } else {
+      const dev = getDeviceLocation();
+      setPlotLat(dev.latitude || 29.6857);
+      setPlotLng(dev.longitude || 76.9905);
+      setIsDetectingGps(false);
+      setGpsStatusText('Geolocation unsupported by browser. Please type coordinates manually below.');
+    }
+  };
+
+  useEffect(() => {
+    if (showAddModal) {
+      handleDetectGPS(true);
+    }
+  }, [showAddModal]);
+
+  // STRICT OWNERSHIP FILTER (RBAC):
   // Only display plots owned by the current logged-in user.
-  // If guest (not logged in), show only guest plots.
+  // Unauthenticated guests see zero plots.
   const userPlots = useMemo(() => {
     if (currentUser) {
       return plots.filter((p) => p.farmerId === currentUser.id);
     }
-    // Guest session: only show plots registered by guest
-    return plots.filter((p) => p.farmerId === 'guest-farmer' || !p.farmerId);
+    return [];
   }, [plots, currentUser]);
 
   const handleRefreshPlotWeather = async (plot: Plot) => {
@@ -60,23 +130,27 @@ export const PlotsManager: React.FC<PlotsManagerProps> = ({
 
   const handleAddPlot = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) {
+      if (onOpenAuthModal) onOpenAuthModal();
+      return;
+    }
     if (!plotName.trim()) return;
 
-    const farmerId = currentUser?.id || 'guest-farmer';
-    const farmerName = currentUser?.fullName || 'Community Farmer';
+    const farmerId = currentUser.id;
+    const farmerName = currentUser.fullName;
 
     const newPlot = appStorage.addPlot({
       farmerId,
       farmerName,
       plotName: plotName.trim(),
-      village: village.trim() || currentUser?.village || 'Karnal',
-      state: state.trim() || currentUser?.state || 'Haryana',
+      village: village.trim() || currentUser?.village || 'Shivamogga',
+      state: state.trim() || currentUser?.state || 'Karnataka',
       acres: Number(acres) || 1,
       acreUnit: 'acre',
       cropType: cropType.trim(),
       cropStage,
-      latitude: 29.68,
-      longitude: 76.99,
+      latitude: Number(plotLat) || 29.6857,
+      longitude: Number(plotLng) || 76.9905,
       weather: {
         rainfallMm: 5.0,
         rainProbabilityPercent: 25,
@@ -91,11 +165,16 @@ export const PlotsManager: React.FC<PlotsManagerProps> = ({
   };
 
   const handleDeletePlot = (id: string) => {
+    if (!currentUser) {
+      if (onOpenAuthModal) onOpenAuthModal();
+      return;
+    }
+
     const plot = plots.find((p) => p.id === id);
     if (!plot) return;
 
     // Security check: only the owner can delete their plot
-    if (currentUser && plot.farmerId && plot.farmerId !== currentUser.id) {
+    if (plot.farmerId && plot.farmerId !== currentUser.id) {
       alert('You can only delete farm plots registered under your own account.');
       return;
     }
@@ -147,38 +226,39 @@ export const PlotsManager: React.FC<PlotsManagerProps> = ({
         </div>
       </div>
 
-      {/* Guest Notice if not logged in */}
-      {!currentUser && (
-        <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-amber-950 text-xs flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-700 flex-shrink-0" />
-            <span>
-              You are currently viewing as a guest. Log in or create an account so your registered farm plots remain private to you!
-            </span>
+      {/* Plots Cards Grid or Empty / Auth State */}
+      {!currentUser ? (
+        <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-xs p-8 sm:p-12 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-700 mx-auto flex items-center justify-center border border-amber-200">
+            <Lock className="w-7 h-7" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1.5">
+            <h2 className="text-base sm:text-lg font-bold text-neutral-900">
+              Authentication Required to View & Manage Land Plots
+            </h2>
+            <p className="text-xs sm:text-sm text-neutral-500">
+              For privacy and security, agricultural land records and GPS coordinates are exclusively accessible to authenticated farmers. Please sign in to view and manage your fields.
+            </p>
           </div>
           {onOpenAuthModal && (
             <button
               type="button"
               onClick={onOpenAuthModal}
-              className="px-3 py-1 bg-amber-600 text-white rounded-xl font-bold whitespace-nowrap hover:bg-amber-700"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs sm:text-sm shadow-sm transition-all"
             >
-              Log In Now
+              <UserCheck className="w-4 h-4" />
+              <span>Log In or Register to Access Plots</span>
             </button>
           )}
         </div>
-      )}
-
-      {/* Plots Cards Grid or Empty State */}
-      {userPlots.length === 0 ? (
+      ) : userPlots.length === 0 ? (
         <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-xs p-8 sm:p-12 text-center space-y-4">
           <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-700 mx-auto flex items-center justify-center border border-emerald-200">
             <MapPin className="w-7 h-7" />
           </div>
           <div className="max-w-md mx-auto space-y-1.5">
             <h2 className="text-base sm:text-lg font-bold text-neutral-900">
-              {currentUser
-                ? `No Farm Plots Registered for ${currentUser.fullName} Yet`
-                : 'No Farm Plots Registered Yet'}
+              No Farm Plots Registered for {currentUser.fullName} Yet
             </h2>
             <p className="text-xs sm:text-sm text-neutral-500">
               Register your agricultural field plots to track live satellite weather risks and coordinate machinery tailored to your crop cycle.
@@ -211,7 +291,10 @@ export const PlotsManager: React.FC<PlotsManagerProps> = ({
                     </h3>
                     <div className="flex items-center gap-1.5 text-xs text-neutral-500 mt-0.5">
                       <MapPin className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>{plot.village || 'Karnal'}, {plot.state || 'Haryana'}</span>
+                      <span>{plot.village || 'Shivamogga'}, {plot.state || 'Karnataka'}</span>
+                    </div>
+                    <div className="text-[10px] font-mono text-emerald-800 bg-emerald-50/80 px-2 py-0.5 rounded-md inline-block mt-1 border border-emerald-200/60">
+                      GPS: {plot.latitude.toFixed(4)}°N, {plot.longitude.toFixed(4)}°E
                     </div>
                   </div>
 
@@ -322,6 +405,68 @@ export const PlotsManager: React.FC<PlotsManagerProps> = ({
                   onChange={(e) => setPlotName(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
+              </div>
+
+              {/* Automatic GPS Location Detection & Manual Coordinates */}
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
+                    <Navigation className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Field GPS Location (Auto-Detected)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDetectGPS(true)}
+                    disabled={isDetectingGps}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[11px] font-bold transition-all shadow-2xs"
+                  >
+                    <Crosshair className={`w-3 h-3 text-emerald-700 ${isDetectingGps ? 'animate-spin' : ''}`} />
+                    <span>{isDetectingGps ? 'Locating...' : 'Re-detect GPS'}</span>
+                  </button>
+                </div>
+
+                {gpsStatusText && (
+                  <p className="text-[11px] text-emerald-800/90 flex items-center gap-1 font-medium">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                    <span>{gpsStatusText}</span>
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-2.5 pt-0.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-700 mb-0.5">
+                      Latitude (°N) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.00001"
+                      min="-90"
+                      max="90"
+                      required
+                      value={plotLat}
+                      onChange={(e) => setPlotLat(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-neutral-300 text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-700 mb-0.5">
+                      Longitude (°E) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.00001"
+                      min="-180"
+                      max="180"
+                      required
+                      value={plotLng}
+                      onChange={(e) => setPlotLng(parseFloat(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-neutral-300 text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-neutral-500">
+                  Detected automatically via GPS. You can also modify coordinates manually to pinpoint your land.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

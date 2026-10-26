@@ -6,17 +6,20 @@ Allows running `fastapi dev`, `uvicorn main:app --reload`, or deploying to Verce
 import os
 import sys
 import types
+import traceback
 from pathlib import Path
 
+# 1. Determine directories
 _ROOT = Path(__file__).resolve().parent
 _BACKEND_DIR = _ROOT / "backend"
 _APP_DIR = _BACKEND_DIR / "app"
 
+# 2. Add paths to sys.path
 for _p in (str(_ROOT), str(_BACKEND_DIR), str(_APP_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# Ensure 'backend' is registered in sys.modules so 'from backend.app...' always resolves
+# 3. Ensure 'backend' is registered in sys.modules so 'from backend.app...' always resolves
 if "backend" not in sys.modules:
     try:
         import backend
@@ -37,13 +40,61 @@ if "backend.app" not in sys.modules:
         if "backend" in sys.modules and hasattr(sys.modules["backend"], "__dict__"):
             setattr(sys.modules["backend"], "app", _app_pkg)
 
-# Import the FastAPI application instance at top-level
-try:
-    from backend.app.main import app
-except Exception:
-    from app.main import app
+# 4. Import the primary FastAPI application instance
+app = None
+_load_error = None
 
-# Top-level ASGI/WSGI handler for Vercel, AWS Lambda, or other serverless runtimes
+try:
+    from backend.app.main import app as _main_app
+    app = _main_app
+except Exception as exc1:
+    _load_error = exc1
+    sys.stderr.write(f"[AgriMart] Primary import backend.app.main failed: {exc1}\n")
+    traceback.print_exc(file=sys.stderr)
+    try:
+        from app.main import app as _sub_app
+        app = _sub_app
+    except Exception as exc2:
+        _load_error = exc2
+        sys.stderr.write(f"[AgriMart] Secondary import app.main failed: {exc2}\n")
+        traceback.print_exc(file=sys.stderr)
+
+# 5. Guaranteed fallback
+if app is None:
+    try:
+        from fastapi import FastAPI
+        from fastapi.responses import JSONResponse
+
+        app = FastAPI(title="AgriMart Fallback Service")
+
+        @app.get("/{full_path:path}")
+        async def fallback_catch_all(full_path: str):
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "service": "AgriMart FastAPI Backend",
+                    "message": "Backend failed to load during initialization.",
+                    "error": str(_load_error),
+                    "path": full_path,
+                },
+            )
+    except Exception as fatal_exc:
+        sys.stderr.write(f"[AgriMart] Fatal ASGI initialization error: {fatal_exc}\n")
+        async def app(scope, receive, send):
+            if scope["type"] == "http":
+                response_body = b'{"error": "Fatal server initialization error"}'
+                await send({
+                    "type": "http.response.start",
+                    "status": 500,
+                    "headers": [[b"content-type", b"application/json"]],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": response_body,
+                })
+
+# 6. Ensure handler is always defined at module level
 handler = app
 
 __all__ = ["app", "handler"]

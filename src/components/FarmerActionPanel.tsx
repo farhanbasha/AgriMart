@@ -478,7 +478,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
       <form onSubmit={handleFormSubmit} className="space-y-5 sm:space-y-6">
         {/* Step 1: Select Farm Plot (strictly user's owned plots) */}
         <div className="space-y-1.5">
-          <div className="flex flex-wrap justify-between items-center gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
             <label htmlFor="land-plot-select" className="text-xs font-bold text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
               <span className="w-5 h-5 rounded-full bg-neutral-900 text-white text-[11px] font-bold flex items-center justify-center font-mono">
                 1
@@ -486,7 +486,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
               <span>Your Registered Land Plot</span>
             </label>
             {activePlot && (
-              <span className="text-xs text-emerald-800 font-semibold font-mono">
+              <span className="text-xs text-emerald-800 font-semibold font-mono break-all sm:break-normal">
                 GPS: {activePlot.latitude.toFixed(4)}°N, {activePlot.longitude.toFixed(4)}°E ({activePlot.acres} {activePlot.acreUnit || 'Acres'})
               </span>
             )}
@@ -517,7 +517,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
 
         {/* Step 2: Select Equipment or Labour */}
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
             <label htmlFor="target-machinery-select" className="block text-xs font-bold text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
               <span className="w-5 h-5 rounded-full bg-neutral-900 text-white text-[11px] font-bold flex items-center justify-center font-mono">
                 2
@@ -791,9 +791,9 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
               {feasibility.isHardBlocker
                 ? 'Operational Restriction (Unfeasible)'
                 : hasLockedOngoingCollision
-                ? '🔒 Ongoing / 30m Buffer Lock Active: Protected Shift + Remaining Turn Arbitration'
+                ? 'Ongoing / 30m Buffer Lock Active: Protected Shift + Remaining Turn Arbitration'
                 : feasibility.hasTimeCollision
-                ? '⚡ Competing Request Detected: Fair Turn Arbitration Available'
+                ? 'Competing Request Detected: Fair Turn Arbitration Available'
                 : 'Time Slot Feasible: Zero Machine Collisions'}
             </div>
             <p className="leading-relaxed">
@@ -810,7 +810,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
 
         {/* Telemetry Card */}
         {activePlot && activeResource && (
-          <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div className="p-3 sm:p-4 rounded-2xl bg-neutral-50 border border-neutral-200 grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 text-xs">
             <div>
               <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">Depot Distance</div>
               <div className="font-bold text-neutral-900 font-mono text-sm mt-0.5">{distanceKm.toFixed(1)} km</div>

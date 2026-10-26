@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plot } from '../types';
 import { getDeviceLocation, subscribeDeviceLocation, DeviceLocationState } from '../lib/deviceLocation';
 import { getLiveWeatherForCoordinates, get5DayForecast, LiveWeatherReport, DailyForecastReport } from '../lib/weather';
@@ -94,9 +94,9 @@ export const DeviceWeatherWidget: React.FC<DeviceWeatherWidgetProps> = ({
                 </span>
               )}
             </div>
-            <div className="text-sm sm:text-base font-extrabold text-neutral-900 flex items-center gap-1.5">
+            <div className="text-sm sm:text-base font-extrabold text-neutral-900 flex flex-wrap items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-              <span>{locationLabel}</span>
+              <span className="break-words">{locationLabel}</span>
               <span className="text-xs text-neutral-400 font-mono font-normal">
                 ({targetLat.toFixed(2)}°N, {targetLon.toFixed(2)}°E)
               </span>
@@ -105,7 +105,7 @@ export const DeviceWeatherWidget: React.FC<DeviceWeatherWidgetProps> = ({
         </div>
 
         {/* Action Controls: Refresh + Plot vs Device Switch + Forecast Toggle */}
-        <div className="flex items-center gap-1.5 self-end sm:self-auto">
+        <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
           {activePlot && (
             <button
               type="button"
@@ -177,12 +177,12 @@ export const DeviceWeatherWidget: React.FC<DeviceWeatherWidgetProps> = ({
 
       {/* Advisory Bar */}
       {currentWeather && (
-        <div className="mt-3 flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-emerald-50/60 border border-emerald-200/60 text-xs text-emerald-950">
+        <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-2xl bg-emerald-50/60 border border-emerald-200/60 text-xs text-emerald-950">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-700 flex-shrink-0" />
             <span className="font-semibold">{currentWeather.description}</span>
           </div>
-          <span className="text-[11px] font-mono text-emerald-700 uppercase font-bold">
+          <span className="text-[11px] font-mono text-emerald-700 uppercase font-bold self-end sm:self-auto">
             Provider: {currentWeather.provider}
           </span>
         </div>

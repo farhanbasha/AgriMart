@@ -203,22 +203,22 @@ export const PlotsManager: React.FC<PlotsManagerProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           {!currentUser && onOpenAuthModal && (
             <button
               type="button"
               onClick={onOpenAuthModal}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition-colors"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition-colors"
             >
               <UserCheck className="w-4 h-4 text-amber-700" />
-              <span>Log In to Save Plots to Account</span>
+              <span>Log In to Save Plots</span>
             </button>
           )}
 
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all self-start sm:self-auto"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all"
           >
             <Plus className="w-4 h-4" />
             <span>Add New Farm Land</span>
@@ -388,8 +388,8 @@ export const PlotsManager: React.FC<PlotsManagerProps> = ({
 
       {/* Add Plot Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-neutral-200 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-md bg-white rounded-3xl p-5 sm:p-6 shadow-2xl border border-neutral-200 space-y-4 my-auto max-h-[92dvh] overflow-y-auto">
             <h3 className="text-base font-bold text-neutral-900">Add New Farm Land</h3>
 
             <form onSubmit={handleAddPlot} className="space-y-3">

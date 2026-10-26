@@ -88,16 +88,16 @@ export const ArbitrationModal: React.FC<ArbitrationModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="arbitration-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-neutral-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-6 bg-neutral-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in"
     >
       <div
-        className="relative w-full max-w-3xl bg-white rounded-3xl border border-neutral-200 shadow-2xl overflow-hidden my-8"
+        className="relative w-full max-w-3xl bg-white rounded-3xl border border-neutral-200 shadow-2xl overflow-hidden my-auto max-h-[92dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header Bar */}
-        <div className="px-6 py-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/70">
+        <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/70 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center border border-amber-300">
+            <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center border border-amber-300 flex-shrink-0">
               <Sparkles className="w-5 h-5 text-amber-600" />
             </div>
             <div>
@@ -120,7 +120,7 @@ export const ArbitrationModal: React.FC<ArbitrationModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto flex-1 overscroll-contain">
           {/* Deciding Factor Pill */}
           <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-neutral-50 rounded-2xl border border-neutral-200 text-xs">
             <div className="flex items-center gap-2 text-neutral-600 font-medium">
@@ -441,7 +441,7 @@ export const ArbitrationModal: React.FC<ArbitrationModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 border-t border-neutral-100 bg-neutral-50/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="px-5 sm:px-6 py-3.5 sm:py-4 border-t border-neutral-100 bg-neutral-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <span className="text-xs text-neutral-500">
             Automated Fair Decision · Completely Transparent
           </span>

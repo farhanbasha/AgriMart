@@ -191,8 +191,8 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({
   const isFullyWorking = report?.connected && report?.tablesFound;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-neutral-950/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-neutral-950/70 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-2xl max-w-2xl w-full max-h-[92dvh] overflow-y-auto flex flex-col my-auto">
         {/* Modal Header */}
         <div className="p-4 sm:p-6 border-b border-neutral-100 flex items-center justify-between sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">

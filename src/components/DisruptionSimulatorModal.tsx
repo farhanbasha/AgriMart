@@ -150,15 +150,15 @@ export const DisruptionSimulatorModal: React.FC<DisruptionSimulatorModalProps> =
       role="dialog"
       aria-modal="true"
       aria-labelledby="disruption-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-neutral-900/40 backdrop-blur-md overflow-y-auto animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-6 bg-neutral-900/40 backdrop-blur-md overflow-y-auto animate-fade-in"
     >
       <div
-        className="relative w-full max-w-2xl bg-white rounded-3xl border border-neutral-200 shadow-2xl overflow-hidden my-8"
+        className="relative w-full max-w-2xl bg-white rounded-3xl border border-neutral-200 shadow-2xl overflow-hidden my-auto max-h-[92dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+        <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-700 flex items-center justify-center border border-rose-500/20">
+            <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-700 flex items-center justify-center border border-rose-500/20 flex-shrink-0">
               <AlertTriangle className="w-4 h-4 text-rose-600" />
             </div>
             <div>
@@ -181,13 +181,13 @@ export const DisruptionSimulatorModal: React.FC<DisruptionSimulatorModalProps> =
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 overscroll-contain">
           {/* Shock Type Selector */}
           <div>
             <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider mb-2">
               Select Disruption Shock
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -280,15 +280,15 @@ export const DisruptionSimulatorModal: React.FC<DisruptionSimulatorModalProps> =
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-neutral-100 bg-neutral-50/50 flex items-center justify-between">
+        <div className="px-5 sm:px-6 py-3.5 sm:py-4 border-t border-neutral-100 bg-neutral-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <span className="text-xs text-neutral-400">
             Real-time multi-agent crisis simulation
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 text-xs font-semibold hover:bg-neutral-100"
+              className="flex-1 sm:flex-none px-4 py-2 rounded-xl border border-neutral-300 text-neutral-700 text-xs font-semibold hover:bg-neutral-100 transition-colors"
             >
               Close
             </button>
@@ -296,14 +296,14 @@ export const DisruptionSimulatorModal: React.FC<DisruptionSimulatorModalProps> =
               type="button"
               onClick={handleSimulate}
               disabled={isSimulatingAI}
-              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-70 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+              className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-70 text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-colors"
             >
               {isSimulatingAI ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <AlertTriangle className="w-3.5 h-3.5" />
               )}
-              <span>{isSimulatingAI ? 'Simulating with Gemini AI...' : 'Trigger Disruption & Reroute'}</span>
+              <span>{isSimulatingAI ? 'Simulating...' : 'Trigger Disruption & Reroute'}</span>
             </button>
           </div>
         </div>

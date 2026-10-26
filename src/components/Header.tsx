@@ -272,10 +272,11 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   type="button"
                   onClick={onOpenAuthModal}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition-colors shrink-0"
                 >
                   <User className="w-3.5 h-3.5" />
-                  <span>Log In / Sign Up</span>
+                  <span className="hidden sm:inline">Log In / Sign Up</span>
+                  <span className="sm:hidden">Log In</span>
                 </button>
               )}
             </div>
@@ -286,7 +287,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Mobile Ergonomic Bottom Navigation Dock */}
       <nav
         aria-label="Mobile Navigation"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200/90 lg:hidden shadow-lg px-2 py-1.5"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200/90 lg:hidden shadow-lg px-2 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex items-center justify-around text-xs font-bold max-w-lg mx-auto">
           <button

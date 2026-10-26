@@ -166,7 +166,7 @@ export const OwnerActionPanel: React.FC<OwnerActionPanelProps> = ({
             <button
               type="button"
               onClick={onNavigateToAdd}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-xs transition-colors self-start sm:self-auto"
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-xs transition-colors w-full sm:w-auto"
             >
               <PlusCircle className="w-4 h-4" />
               <span>+ Onboard Machine</span>
@@ -274,7 +274,7 @@ export const OwnerActionPanel: React.FC<OwnerActionPanelProps> = ({
                             key={st.id}
                             type="button"
                             onClick={() => onUpdateStatus(res.id, st.id as OperationalStatus)}
-                            className={`px-1.5 sm:px-2.5 py-2 rounded-xl text-[11px] sm:text-xs font-bold border transition-all text-center ${
+                            className={`px-1 sm:px-2.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold border transition-all text-center truncate ${
                               isSelected
                                 ? st.id === 'maintenance'
                                   ? 'bg-rose-700 text-white border-rose-700 shadow-xs'

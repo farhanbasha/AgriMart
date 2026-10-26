@@ -458,7 +458,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-neutral-950/70 backdrop-blur-md overflow-y-auto animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-6 bg-neutral-950/70 backdrop-blur-md overflow-y-auto animate-fade-in"
     >
       <div
         className={`relative w-full ${
@@ -467,11 +467,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             : mode === 'register'
             ? 'max-w-lg sm:max-w-xl'
             : 'max-w-md'
-        } bg-white rounded-3xl border border-neutral-200 shadow-2xl overflow-hidden my-4 sm:my-8 transition-all`}
+        } bg-white rounded-3xl border border-neutral-200 shadow-2xl overflow-hidden my-auto max-h-[92dvh] flex flex-col transition-all`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 sm:px-8 py-5 border-b border-neutral-100 flex items-center justify-between bg-gradient-to-r from-neutral-50 via-white to-emerald-50/40">
+        <div className="px-5 sm:px-8 py-4 sm:py-5 border-b border-neutral-100 flex items-center justify-between bg-gradient-to-r from-neutral-50 via-white to-emerald-50/40 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-700 text-white flex items-center justify-center shadow-sm flex-shrink-0">
               {mode === 'complete-profile' ? (
@@ -519,7 +519,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Tab Selector (only for Login vs Register) */}
         {mode !== 'complete-profile' && (
-          <div className="flex border-b border-neutral-100 bg-neutral-50/40 p-1.5 gap-1.5 text-xs font-bold">
+          <div className="flex border-b border-neutral-100 bg-neutral-50/40 p-1.5 gap-1.5 text-xs font-bold shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -553,21 +553,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Alerts */}
         {errorMessage && (
-          <div className="mx-6 sm:mx-8 mt-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex items-center gap-2.5">
+          <div className="mx-4 sm:mx-8 mt-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex items-center gap-2.5 shrink-0">
             <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
             <span className="font-medium">{errorMessage}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="mx-6 sm:mx-8 mt-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs flex items-center gap-2.5">
+          <div className="mx-4 sm:mx-8 mt-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs flex items-center gap-2.5 shrink-0">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
             <span className="font-semibold">{successMessage}</span>
           </div>
         )}
 
         {/* Form Body */}
-        <div className="p-6 sm:p-8">
+        <div className="p-4 sm:p-8 overflow-y-auto flex-1 overscroll-contain">
           {mode === 'login' ? (
             /* ================================================================= */
             /* 1. LOGIN FORM                                                     */

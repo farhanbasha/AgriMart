@@ -280,7 +280,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
 
       {/* Guest Notice if not logged in */}
       {!currentUser && (
-        <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-amber-950 text-xs flex items-center justify-between gap-3">
+        <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-amber-950 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-amber-700 flex-shrink-0" />
             <span>
@@ -291,7 +291,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
             <button
               type="button"
               onClick={onOpenAuthModal}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold whitespace-nowrap"
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold whitespace-nowrap self-start sm:self-auto"
             >
               Log In Now
             </button>
@@ -317,7 +317,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-neutral-200">
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-neutral-200 -mx-4 px-4 sm:mx-0 sm:px-0">
         <button
           type="button"
           onClick={() => {

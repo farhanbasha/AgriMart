@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CloudRain, X, ArrowRight, ShieldAlert, RefreshCw, Sun, Wind } from 'lucide-react';
+import { CloudRain, X, ArrowRight, ShieldAlert, RefreshCw, Sun, Wind, Zap } from 'lucide-react';
 import { getLiveWeatherForCoordinates, LiveWeatherReport } from '../lib/weather';
 
 interface SentinelBarProps {
@@ -87,7 +87,7 @@ export const SentinelBar: React.FC<SentinelBarProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 flex-shrink-0 pt-1 sm:pt-0 border-t border-neutral-200/50 sm:border-t-0">
+        <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-1.5 sm:gap-2 flex-shrink-0 pt-1.5 sm:pt-0 border-t border-neutral-200/50 sm:border-t-0">
           <button
             type="button"
             onClick={() => fetchWeather(true)}
@@ -104,7 +104,8 @@ export const SentinelBar: React.FC<SentinelBarProps> = ({
               onClick={onSimulateDisruption}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-semibold text-xs border border-amber-300 transition-colors"
             >
-              <span>⚡ Crisis Reroute</span>
+              <Zap className="w-3.5 h-3.5 text-amber-800" />
+              <span>Crisis Reroute</span>
             </button>
           )}
 

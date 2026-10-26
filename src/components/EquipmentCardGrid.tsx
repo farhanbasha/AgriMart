@@ -325,7 +325,7 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
       </div>
 
       {/* 4. Category Filter Chips */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none sm:flex-wrap text-xs">
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none sm:flex-wrap text-xs -mx-4 px-4 sm:mx-0 sm:px-0">
         <span className="text-neutral-400 font-bold uppercase tracking-wider text-[10px] mr-1 flex-shrink-0">
           Filter:
         </span>
@@ -479,7 +479,7 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
                 </div>
 
                 {/* Bottom Rate & Book Action */}
-                <div className="pt-3 border-t border-neutral-100 flex items-center justify-between gap-2">
+                <div className="pt-3 border-t border-neutral-100 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
                   <div>
                     <div className="text-lg font-extrabold text-neutral-900 flex items-baseline font-mono">
                       <span>₹{item.hourlyRate.toLocaleString('en-IN')}</span>

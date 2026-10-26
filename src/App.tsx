@@ -912,7 +912,7 @@ export default function App() {
         <aside
           role="status"
           aria-live="polite"
-          className="fixed bottom-20 left-4 right-4 sm:left-auto sm:right-4 sm:bottom-6 z-50 max-w-md bg-neutral-950/95 text-white px-4 py-3.5 rounded-2xl shadow-2xl border border-neutral-700/80 backdrop-blur-md flex items-center gap-3 animate-fade-in text-xs font-semibold"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-3 right-3 sm:left-auto sm:right-4 sm:bottom-6 z-50 max-w-md bg-neutral-950/95 text-white px-4 py-3.5 rounded-2xl shadow-2xl border border-neutral-700/80 backdrop-blur-md flex items-center gap-3 animate-fade-in text-xs font-semibold"
         >
           <div className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
             <CheckCircle2 className="w-4 h-4" />
@@ -930,7 +930,7 @@ export default function App() {
       )}
 
       {/* 4. Main Tabbed Views or 404 Not Found Page */}
-      <main className="flex-1 pb-24 lg:pb-16 flex flex-col">
+      <main className="flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-16 flex flex-col">
         {isNotFound ? (
           <NotFoundPage
             attemptedPath={currentPath}
@@ -1053,7 +1053,7 @@ export default function App() {
       </main>
 
       {/* 5. Cooperative Footer */}
-      <footer className="bg-white border-t border-neutral-200/90 py-6 pb-24 lg:pb-6 text-xs text-neutral-500">
+      <footer className="bg-white border-t border-neutral-200/90 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-6 text-xs text-neutral-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">

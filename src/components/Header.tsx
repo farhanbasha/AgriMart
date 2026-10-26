@@ -89,8 +89,9 @@ export const Header: React.FC<HeaderProps> = ({
   isSupabaseConnected = true,
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/80 shadow-xs transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <>
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/80 shadow-xs transition-colors w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="h-16 flex items-center justify-between gap-4">
           {/* AgriMart Brand Logo */}
           <div className="flex items-center flex-shrink-0">
@@ -283,11 +284,12 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </div>
+    </header>
 
-      {/* Mobile Ergonomic Bottom Navigation Dock */}
+      {/* Mobile Ergonomic Bottom Navigation Dock (Fixed to real viewport bottom, outside header) */}
       <nav
         aria-label="Mobile Navigation"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200/90 lg:hidden shadow-lg px-2 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+        className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-neutral-200/90 lg:hidden shadow-lg px-2 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex items-center justify-around text-xs font-bold max-w-lg mx-auto">
           <button
@@ -356,6 +358,6 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
       </nav>
-    </header>
+    </>
   );
 };

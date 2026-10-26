@@ -173,7 +173,7 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-xs p-4 sm:p-7 space-y-5 sm:space-y-6">
+    <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-xs p-4 sm:p-7 space-y-5 sm:space-y-6 w-full max-w-full min-w-0 overflow-hidden">
       {/* 1. Header & Location Context */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4 border-b border-neutral-100 pb-4 sm:pb-5">
         <div>
@@ -220,7 +220,7 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
 
       {/* 2. Emergency Weather Mobilization Spotlight */}
       {featuredResource && selectedCategory === 'all' && !searchQuery && (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-900 via-emerald-950 to-neutral-900 text-white p-4 sm:p-6 shadow-md border border-emerald-700/40">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-900 via-emerald-950 to-neutral-900 text-white p-4 sm:p-6 shadow-md border border-emerald-700/40 w-full max-w-full min-w-0">
           <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-2 max-w-2xl">
               <div className="flex flex-wrap items-center gap-2">
@@ -325,8 +325,8 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
       </div>
 
       {/* 4. Category Filter Chips */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none sm:flex-wrap text-xs -mx-4 px-4 sm:mx-0 sm:px-0">
-        <span className="text-neutral-400 font-bold uppercase tracking-wider text-[10px] mr-1 flex-shrink-0">
+      <div className="w-full max-w-full min-w-0 overflow-x-auto pb-2 scrollbar-none flex items-center gap-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <span className="text-neutral-400 font-bold uppercase tracking-wider text-[10px] mr-1 shrink-0">
           Filter:
         </span>
         {[
@@ -341,7 +341,7 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
             key={tab.id}
             type="button"
             onClick={() => setSelectedCategory(tab.id as any)}
-            className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl font-bold whitespace-nowrap flex-shrink-0 transition-all ${
+            className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl font-bold whitespace-nowrap shrink-0 transition-all ${
               selectedCategory === tab.id
                 ? 'bg-emerald-700 text-white shadow-xs'
                 : 'bg-neutral-100 hover:bg-neutral-200/70 text-neutral-700'
@@ -377,7 +377,7 @@ export const EquipmentCardGrid: React.FC<EquipmentCardGridProps> = ({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 w-full max-w-full min-w-0">
           {filteredResources.map((item) => {
             const isOperational = item.operationalStatus === 'available';
             const isMine = currentUser && item.ownerId === currentUser.id;

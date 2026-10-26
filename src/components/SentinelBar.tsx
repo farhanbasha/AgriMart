@@ -46,9 +46,9 @@ export const SentinelBar: React.FC<SentinelBarProps> = ({
         isRainy
           ? 'bg-amber-50/95 border-b border-amber-300/80 text-amber-950'
           : 'bg-emerald-50/95 border-b border-emerald-300/80 text-emerald-950'
-      } px-3 sm:px-4 py-2.5 transition-all backdrop-blur-xs`}
+      } px-3 sm:px-4 py-2.5 transition-all backdrop-blur-xs w-full max-w-full overflow-hidden`}
     >
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 text-xs">
+      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 text-xs w-full min-w-0">
         <div className="flex items-start sm:items-center gap-2.5 min-w-0">
           <div
             className={`flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-xl text-white shadow-xs mt-0.5 sm:mt-0 ${

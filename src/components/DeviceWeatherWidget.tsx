@@ -75,7 +75,7 @@ export const DeviceWeatherWidget: React.FC<DeviceWeatherWidgetProps> = ({
   }, [targetLat, targetLon, useDeviceLocation]);
 
   return (
-    <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-xs p-4 sm:p-5 transition-all">
+    <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-xs p-4 sm:p-5 transition-all w-full max-w-full min-w-0 overflow-hidden">
       {/* Top Banner: Location Header & Mode Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-neutral-100">
         <div className="flex items-center gap-2.5">

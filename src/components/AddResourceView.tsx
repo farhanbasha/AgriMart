@@ -260,9 +260,9 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5 sm:space-y-6 w-full max-w-full min-w-0 overflow-hidden">
       {/* Top Banner */}
-      <div className="bg-gradient-to-br from-emerald-900 via-emerald-950 to-neutral-900 text-white rounded-3xl p-6 sm:p-8 shadow-md border border-emerald-700/40 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-emerald-900 via-emerald-950 to-neutral-900 text-white rounded-3xl p-5 sm:p-8 shadow-md border border-emerald-700/40 relative overflow-hidden w-full max-w-full min-w-0">
         <div className="relative z-10 max-w-2xl">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-3 border border-emerald-500/30">
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
@@ -317,7 +317,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-neutral-200 -mx-4 px-4 sm:mx-0 sm:px-0">
+      <div className="w-full max-w-full min-w-0 overflow-x-auto pb-2 scrollbar-none border-b border-neutral-200 flex items-center gap-2 -mx-3 px-3 sm:mx-0 sm:px-0">
         <button
           type="button"
           onClick={() => {
@@ -325,7 +325,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
             setRateUnit('per_hour');
             setRate(550);
           }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'machinery'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
@@ -342,7 +342,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
             setRateUnit('per_day');
             setRate(2500);
           }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'labour'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
@@ -359,7 +359,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
             setRateUnit('per_acre');
             setRate(350);
           }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'services'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
@@ -376,7 +376,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
             setRateUnit('per_hour');
             setRate(200);
           }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'irrigation'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
@@ -393,7 +393,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
             setRateUnit('per_hour');
             setRate(350);
           }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'transportation'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
@@ -406,7 +406,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('plot')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'plot'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200'
@@ -418,11 +418,11 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
       </div>
 
       {/* Main Grid: Form + Live Card Preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full max-w-full min-w-0">
         {/* Left Form */}
         <form
           onSubmit={handleAddResource}
-          className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-7 shadow-sm border border-neutral-200 space-y-5"
+          className="lg:col-span-7 bg-white rounded-3xl p-4 sm:p-7 shadow-sm border border-neutral-200 space-y-5 w-full max-w-full min-w-0 overflow-hidden"
         >
           {activeTab === 'plot' ? (
             /* FARM PLOT FORM */
@@ -512,16 +512,16 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
 
               {/* Field GPS Coordinates (Auto-detected via GPS + Manual Override) */}
               <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
-                    <Navigation className="w-3.5 h-3.5 text-emerald-700" />
+                    <Navigation className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
                     <span>Field GPS Coordinates (Auto-Detected)</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleDetectPlotGPS(true)}
                     disabled={isDetectingPlotGps}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[11px] font-bold transition-all shadow-2xs"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[11px] font-bold transition-all shadow-2xs self-start sm:self-auto"
                   >
                     <Crosshair className={`w-3 h-3 text-emerald-700 ${isDetectingPlotGps ? 'animate-spin' : ''}`} />
                     <span>{isDetectingPlotGps ? 'Locating...' : 'Re-detect GPS'}</span>
@@ -699,16 +699,16 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
 
               {/* Machine Base Coordinates (Auto-detected via GPS + Manual Override) */}
               <div className="p-3.5 bg-neutral-50 border border-neutral-200/90 rounded-2xl space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-900">
-                    <Navigation className="w-3.5 h-3.5 text-emerald-700" />
+                    <Navigation className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
                     <span>Machine Base Depot Location (Auto-Detected GPS)</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleDetectMachineGPS(true)}
                     disabled={isDetectingMachineGps}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-neutral-100 text-emerald-800 border border-neutral-300 rounded-xl text-[11px] font-bold transition-all shadow-2xs"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-neutral-100 text-emerald-800 border border-neutral-300 rounded-xl text-[11px] font-bold transition-all shadow-2xs self-start sm:self-auto"
                   >
                     <Crosshair className={`w-3 h-3 text-emerald-700 ${isDetectingMachineGps ? 'animate-spin' : ''}`} />
                     <span>{isDetectingMachineGps ? 'Locating...' : 'Re-detect GPS'}</span>
@@ -918,7 +918,7 @@ export const AddResourceView: React.FC<AddResourceViewProps> = ({
         </form>
 
         {/* Right Live Card Preview */}
-        <div className="lg:col-span-5 space-y-4">
+        <div className="lg:col-span-5 space-y-4 w-full max-w-full min-w-0 overflow-hidden">
           <div className="text-xs font-bold uppercase tracking-wider text-neutral-400 px-1">
             Live Preview
           </div>

@@ -882,7 +882,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f8f5] flex flex-col">
+    <div className="min-h-screen bg-[#f4f8f5] flex flex-col w-full max-w-full overflow-x-hidden">
       {/* 1. Header with Menu Navigation & Cloud DB trigger */}
       <Header
         activeTab={isNotFound ? ('' as any) : activeTab}
@@ -930,7 +930,7 @@ export default function App() {
       )}
 
       {/* 4. Main Tabbed Views or 404 Not Found Page */}
-      <main className="flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-16 flex flex-col">
+      <main className="flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-16 flex flex-col w-full max-w-full min-w-0 overflow-x-hidden">
         {isNotFound ? (
           <NotFoundPage
             attemptedPath={currentPath}
@@ -942,7 +942,7 @@ export default function App() {
         ) : (
           <>
             {activeTab === 'explore' && (
-              <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6 sm:space-y-8">
+              <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6 sm:space-y-8 min-w-0">
                 {/* Automatic Device Geolocation & 5-Day Predictive Weather Widget */}
                 <DeviceWeatherWidget
                   activePlot={currentPlot}
@@ -997,13 +997,15 @@ export default function App() {
             )}
 
             {activeTab === 'add' && (
-              <AddResourceView
-                onResourceAdded={handleResourceAdded}
-                onPlotAdded={handlePlotAdded}
-                onViewExplore={() => handleSelectTab('explore')}
-                currentUser={currentUser}
-                onOpenAuthModal={() => openAuthModal('login')}
-              />
+              <div className="w-full max-w-full min-w-0">
+                <AddResourceView
+                  onResourceAdded={handleResourceAdded}
+                  onPlotAdded={handlePlotAdded}
+                  onViewExplore={() => handleSelectTab('explore')}
+                  currentUser={currentUser}
+                  onOpenAuthModal={() => openAuthModal('login')}
+                />
+              </div>
             )}
 
             {activeTab === 'bookings' && (

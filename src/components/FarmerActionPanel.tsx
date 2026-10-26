@@ -372,7 +372,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-neutral-200 p-5 sm:p-7 shadow-xs">
+    <div className="bg-white rounded-3xl border border-neutral-200 p-4 sm:p-7 shadow-xs w-full max-w-full min-w-0 overflow-hidden">
       {/* Top Header & Priority Preview */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-5 border-b border-neutral-100">
         <div>
@@ -424,7 +424,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
             <button
               type="button"
               onClick={onOpenAuthModal}
-              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs whitespace-nowrap self-start sm:self-auto"
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs whitespace-nowrap self-start sm:self-auto w-full sm:w-auto text-center"
             >
               Log In / Register
             </button>
@@ -497,7 +497,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
               id="land-plot-select"
               value={activePlot?.id || ''}
               onChange={(e) => onSelectPlot(e.target.value)}
-              className="w-full appearance-none bg-neutral-50 hover:bg-neutral-100/70 border border-neutral-300 rounded-2xl px-4 py-3 text-xs sm:text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors cursor-pointer"
+              className="w-full max-w-full appearance-none bg-neutral-50 hover:bg-neutral-100/70 border border-neutral-300 rounded-2xl px-4 py-3 text-xs sm:text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors cursor-pointer truncate"
             >
               {userPlots.length === 0 ? (
                 <option value="">No plots registered under your account - add your plot first</option>
@@ -535,7 +535,7 @@ export const FarmerActionPanel: React.FC<FarmerActionPanelProps> = ({
               id="target-machinery-select"
               value={activeResourceId}
               onChange={(e) => handleResourceChange(e.target.value)}
-              className="w-full appearance-none bg-neutral-50 hover:bg-neutral-100/70 border border-neutral-300 rounded-2xl px-4 py-3 text-xs sm:text-sm text-neutral-900 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              className="w-full max-w-full appearance-none bg-neutral-50 hover:bg-neutral-100/70 border border-neutral-300 rounded-2xl px-4 py-3 text-xs sm:text-sm text-neutral-900 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer truncate"
             >
               {serviceableResources.length === 0 ? (
                 <option value="">No equipment within lender serviceable radius of this plot</option>

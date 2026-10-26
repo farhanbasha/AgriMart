@@ -67,6 +67,7 @@ import { PlotsManager } from './components/PlotsManager';
 import { AuthModal } from './components/AuthModal';
 import { SupabaseStatusModal } from './components/SupabaseStatusModal';
 import { Logo } from './components/Logo';
+import { NotFoundPage } from './components/NotFoundPage';
 import {
   CheckCircle2,
   CalendarCheck,
@@ -79,8 +80,82 @@ import {
   Database,
 } from 'lucide-react';
 
+const KNOWN_ROUTES: Record<string, AppNavTab> = {
+  '/': 'explore',
+  '': 'explore',
+  '/explore': 'explore',
+  '/bookings': 'bookings',
+  '/timeline': 'bookings',
+  '/plots': 'plots',
+  '/land': 'plots',
+  '/owner': 'owner',
+  '/fleet': 'owner',
+  '/add': 'add',
+  '/list-machine': 'add',
+};
+
+function normalizePath(rawPath: string): string {
+  if (!rawPath) return '/';
+  const clean = rawPath.trim();
+  const withoutTrailing = clean.length > 1 ? clean.replace(/\/+$/, '') : clean;
+  return withoutTrailing.toLowerCase() || '/';
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<AppNavTab>('explore');
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (typeof window === 'undefined') return '/';
+    return normalizePath(window.location.pathname);
+  });
+
+  const [isNotFound, setIsNotFound] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const path = normalizePath(window.location.pathname);
+    const isOAuth =
+      window.location.hash.includes('access_token=') ||
+      window.location.search.includes('code=');
+    if (isOAuth) return false;
+    return !(path in KNOWN_ROUTES);
+  });
+
+  const [activeTab, setActiveTab] = useState<AppNavTab>(() => {
+    if (typeof window === 'undefined') return 'explore';
+    const path = normalizePath(window.location.pathname);
+    return KNOWN_ROUTES[path] || 'explore';
+  });
+
+  const handleSelectTab = useCallback((tab: AppNavTab) => {
+    setActiveTab(tab);
+    setIsNotFound(false);
+    const targetPath = tab === 'explore' ? '/' : `/${tab}`;
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+      setCurrentPath(targetPath);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = normalizePath(window.location.pathname);
+      setCurrentPath(path);
+      const isOAuth =
+        window.location.hash.includes('access_token=') ||
+        window.location.search.includes('code=');
+      if (isOAuth) {
+        setIsNotFound(false);
+        return;
+      }
+      if (path in KNOWN_ROUTES) {
+        setIsNotFound(false);
+        setActiveTab(KNOWN_ROUTES[path]);
+      } else {
+        setIsNotFound(true);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const [activeRole, setActiveRole] = useState<UserRole>('borrower');
 
   // Kisan User Authentication & Session
@@ -471,12 +546,12 @@ export default function App() {
 
     if (userPlots.length === 0) {
       showToast('Please register at least one farm plot under your account before booking machinery.');
-      setActiveTab('plots');
+      handleSelectTab('plots');
       return;
     }
     if (resources.length === 0) {
       showToast('Please list or select an equipment unit before booking.');
-      setActiveTab('add');
+      handleSelectTab('add');
       return;
     }
 
@@ -564,7 +639,7 @@ export default function App() {
       appStorage.addBooking(provisionalBooking);
       setBookings(appStorage.getBookings());
       showToast('Saved to Local Cache (Offline). Will auto-sync when online.');
-      setActiveTab('bookings');
+      handleSelectTab('bookings');
       return;
     }
 
@@ -638,7 +713,7 @@ export default function App() {
 
       setActiveConflict(smartResult.conflictRecord);
       setIsArbitrationOpen(true);
-      setActiveTab('bookings');
+      handleSelectTab('bookings');
 
       if (candidateWon) {
         showToast(
@@ -682,7 +757,7 @@ export default function App() {
     } else {
       showToast(`Booked ${targetResource.name}! Priority Score: ${score.totalPriorityScore}/100.`);
     }
-    setActiveTab('bookings');
+    handleSelectTab('bookings');
 
     // Automated Twilio SMS Dispatch to Farmer & Driver
     if (isSMSConfigured() && currentUser?.phone) {
@@ -810,8 +885,8 @@ export default function App() {
     <div className="min-h-screen bg-[#f4f8f5] flex flex-col">
       {/* 1. Header with Menu Navigation & Cloud DB trigger */}
       <Header
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        activeTab={isNotFound ? ('' as any) : activeTab}
+        onSelectTab={handleSelectTab}
         activeRole={activeRole}
         onRoleChange={setActiveRole}
         conflictCount={activeConflict ? 1 : 0}
@@ -854,114 +929,126 @@ export default function App() {
         </aside>
       )}
 
-      {/* 4. Main Tabbed Views */}
-      <main className="flex-1 pb-24 lg:pb-16">
-        {activeTab === 'explore' && (
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6 sm:space-y-8">
-            {/* Automatic Device Geolocation & 5-Day Predictive Weather Widget */}
-            <DeviceWeatherWidget
-              activePlot={currentPlot}
-            />
+      {/* 4. Main Tabbed Views or 404 Not Found Page */}
+      <main className="flex-1 pb-24 lg:pb-16 flex flex-col">
+        {isNotFound ? (
+          <NotFoundPage
+            attemptedPath={currentPath}
+            onNavigate={handleSelectTab}
+            availableResourcesCount={resources.length}
+            plotsCount={userPlots.length || plots.length}
+            bookingsCount={bookings.length}
+          />
+        ) : (
+          <>
+            {activeTab === 'explore' && (
+              <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6 sm:space-y-8">
+                {/* Automatic Device Geolocation & 5-Day Predictive Weather Widget */}
+                <DeviceWeatherWidget
+                  activePlot={currentPlot}
+                />
 
-            {/* Action Panel: Book Machinery / Labour with Conflict Detection & User-Owned Plots */}
-            <FarmerActionPanel
-              plots={plots}
-              resources={resources}
-              bookings={bookings}
-              selectedPlotId={selectedPlotId}
-              onSelectPlot={setSelectedPlotId}
-              selectedResourceId={selectedResourceId}
-              onSelectResource={setSelectedResourceId}
-              isOnline={isOnline}
-              onOpenAddPlot={() => setActiveTab('plots')}
-              onOpenAddResource={() => setActiveTab('add')}
-              currentUser={currentUser}
-              onOpenAuthModal={() => openAuthModal('login')}
-              onSubmitBooking={handleBookingSubmit}
-            />
+                {/* Action Panel: Book Machinery / Labour with Conflict Detection & User-Owned Plots */}
+                <FarmerActionPanel
+                  plots={plots}
+                  resources={resources}
+                  bookings={bookings}
+                  selectedPlotId={selectedPlotId}
+                  onSelectPlot={setSelectedPlotId}
+                  selectedResourceId={selectedResourceId}
+                  onSelectResource={setSelectedResourceId}
+                  isOnline={isOnline}
+                  onOpenAddPlot={() => handleSelectTab('plots')}
+                  onOpenAddResource={() => handleSelectTab('add')}
+                  currentUser={currentUser}
+                  onOpenAuthModal={() => openAuthModal('login')}
+                  onSubmitBooking={handleBookingSubmit}
+                />
 
-            {/* Equipment, Services & Labour Browser with Lender Radius Filter */}
-            <EquipmentCardGrid
-              resources={resources}
-              activePlot={currentPlot}
-              currentUser={currentUser}
-              onRequestResource={(resId) => {
-                if (!currentUser) {
-                  showToast('Please log in with your mobile number or email to select and book equipment.');
-                  openAuthModal('login');
-                  return;
-                }
-                setSelectedResourceId(resId);
-                const target = resources.find((r) => r.id === resId);
-                if (target) {
+                {/* Equipment, Services & Labour Browser with Lender Radius Filter */}
+                <EquipmentCardGrid
+                  resources={resources}
+                  activePlot={currentPlot}
+                  currentUser={currentUser}
+                  onRequestResource={(resId) => {
+                    if (!currentUser) {
+                      showToast('Please log in with your mobile number or email to select and book equipment.');
+                      openAuthModal('login');
+                      return;
+                    }
+                    setSelectedResourceId(resId);
+                    const target = resources.find((r) => r.id === resId);
+                    if (target) {
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                      showToast(`Selected "${target.name}". Review details above to confirm booking.`);
+                    }
+                  }}
+                  onDeleteResource={handleDeleteResource}
+                  onNavigateToAdd={() => {
+                    if (!currentUser) {
+                      showToast('Please log in with your account before listing machinery.');
+                      openAuthModal('login');
+                      return;
+                    }
+                    handleSelectTab('add');
+                  }}
+                />
+              </div>
+            )}
+
+            {activeTab === 'add' && (
+              <AddResourceView
+                onResourceAdded={handleResourceAdded}
+                onPlotAdded={handlePlotAdded}
+                onViewExplore={() => handleSelectTab('explore')}
+                currentUser={currentUser}
+                onOpenAuthModal={() => openAuthModal('login')}
+              />
+            )}
+
+            {activeTab === 'bookings' && (
+              <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+                <MasterTimeline
+                  bookings={bookings}
+                  resources={resources}
+                  activeConflict={activeConflict}
+                  onOpenArbitration={() => setIsArbitrationOpen(true)}
+                  onCancelBooking={handleCancelBooking}
+                  currentUser={currentUser}
+                />
+              </div>
+            )}
+
+            {activeTab === 'plots' && (
+              <PlotsManager
+                plots={plots}
+                onPlotsChange={setPlots}
+                currentUser={currentUser}
+                onOpenAuthModal={() => openAuthModal('login')}
+                onBookForPlot={(plotId) => {
+                  setSelectedPlotId(plotId);
+                  handleSelectTab('explore');
                   window.scrollTo({ top: 0, behavior: 'smooth' });
-                  showToast(`Selected "${target.name}". Review details above to confirm booking.`);
-                }
-              }}
-              onDeleteResource={handleDeleteResource}
-              onNavigateToAdd={() => {
-                if (!currentUser) {
-                  showToast('Please log in with your account before listing machinery.');
-                  openAuthModal('login');
-                  return;
-                }
-                setActiveTab('add');
-              }}
-            />
-          </div>
-        )}
+                  showToast('Plot selected for booking. Choose your machine below.');
+                }}
+              />
+            )}
 
-        {activeTab === 'add' && (
-          <AddResourceView
-            onResourceAdded={handleResourceAdded}
-            onPlotAdded={handlePlotAdded}
-            onViewExplore={() => setActiveTab('explore')}
-            currentUser={currentUser}
-            onOpenAuthModal={() => openAuthModal('login')}
-          />
-        )}
-
-        {activeTab === 'bookings' && (
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
-            <MasterTimeline
-              bookings={bookings}
-              resources={resources}
-              activeConflict={activeConflict}
-              onOpenArbitration={() => setIsArbitrationOpen(true)}
-              onCancelBooking={handleCancelBooking}
-              currentUser={currentUser}
-            />
-          </div>
-        )}
-
-        {activeTab === 'plots' && (
-          <PlotsManager
-            plots={plots}
-            onPlotsChange={setPlots}
-            currentUser={currentUser}
-            onOpenAuthModal={() => openAuthModal('login')}
-            onBookForPlot={(plotId) => {
-              setSelectedPlotId(plotId);
-              setActiveTab('explore');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-              showToast('Plot selected for booking. Choose your machine below.');
-            }}
-          />
-        )}
-
-        {activeTab === 'owner' && (
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
-            <OwnerActionPanel
-              resources={resources}
-              bookings={bookings}
-              currentUserId={currentUser?.id || ''}
-              currentUser={currentUser}
-              onUpdateStatus={handleUpdateResourceStatus}
-              onNavigateToAdd={() => setActiveTab('add')}
-              onOpenAuthModal={() => openAuthModal('login')}
-              onCancelBooking={handleCancelBooking}
-            />
-          </div>
+            {activeTab === 'owner' && (
+              <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+                <OwnerActionPanel
+                  resources={resources}
+                  bookings={bookings}
+                  currentUserId={currentUser?.id || ''}
+                  currentUser={currentUser}
+                  onUpdateStatus={handleUpdateResourceStatus}
+                  onNavigateToAdd={() => handleSelectTab('add')}
+                  onOpenAuthModal={() => openAuthModal('login')}
+                  onCancelBooking={handleCancelBooking}
+                />
+              </div>
+            )}
+          </>
         )}
       </main>
 

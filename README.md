@@ -317,6 +317,7 @@ AgriMart/
 │   │   ├── Header.tsx                 # Navigation bar, user avatar & role switch
 │   │   ├── Logo.tsx                   # AgriMart SVG brand mark
 │   │   ├── MasterTimeline.tsx         # Chronological Gantt field schedule
+│   │   ├── NotFoundPage.tsx           # 404 Out-of-bounds sector recovery & bento navigation
 │   │   ├── OwnerActionPanel.tsx       # Equipment fleet management dashboard
 │   │   ├── PlotsManager.tsx           # Farm land registry with crop & stage
 │   │   ├── SentinelBar.tsx            # Connectivity, telemetry & sync status

@@ -7,6 +7,7 @@ import {
 
 const API_TIMEOUT_MS = 4500;
 const JWT_STORAGE_KEY = 'agrimart_jwt_access_token_v1';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || (import.meta as any).env?.VITE_BACKEND_URL || '';
 
 export function getStoredJwtToken(): string | null {
   try {
@@ -28,11 +29,12 @@ export function setStoredJwtToken(token: string | null): void {
   }
 }
 
-async function fetchWithTimeout<T>(url: string, options: RequestInit, timeoutMs = API_TIMEOUT_MS): Promise<T> {
+async function fetchWithTimeout<T>(endpoint: string, options: RequestInit, timeoutMs = API_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const token = getStoredJwtToken();
   const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const url = API_BASE_URL && endpoint.startsWith('/') ? `${API_BASE_URL.replace(/\/$/, '')}${endpoint}` : endpoint;
 
   try {
     const response = await fetch(url, {

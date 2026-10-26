@@ -26,6 +26,9 @@ app = FastAPI(
         "and RBAC JWT Authentication."
     ),
     version=settings.VERSION,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 app.add_middleware(
@@ -49,13 +52,16 @@ app.include_router(sms.router)
 
 
 @app.get("/", tags=["Root"])
+@app.get("/api", tags=["Root"])
+@app.get("/api/", tags=["Root"])
 def root_index():
     """Root landing endpoint with service metadata and documentation links."""
     return {
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "status": "online",
-        "docs_url": "/docs",
+        "docs_url": "/api/docs",
+        "openapi_url": "/api/openapi.json",
         "health_check": "/api/health",
         "diagnostics": "/api/internal/diagnostics",
     }
